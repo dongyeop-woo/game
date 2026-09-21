@@ -12,11 +12,11 @@
 import { CONCEPTS, STAGES } from '../src/tube/content';
 import {
   CADENCES,
-  actionsOf,
   answer,
   conceptOf,
-  doAction,
   fmtSubs,
+  play,
+  reroll,
   setCadence,
   start,
 } from '../src/tube/engine';
@@ -24,7 +24,7 @@ import type { Run } from '../src/tube/types';
 
 const one = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
-function play(cadence?: string): Run {
+function playRun(cadence?: string): Run {
   let r = start([]);
   if (cadence) r = setCadence(r, cadence);
   let guard = 0;
@@ -33,9 +33,10 @@ function play(cadence?: string): Run {
       r = answer(r, one(r.pending.choices ?? []));
       continue;
     }
-    const acts = actionsOf(r);
-    if (acts.length === 0) break;
-    r = doAction(r, one(acts));
+    // 열에 한 번은 새로고침을 눌러 본다. 손이 비면 안 되니 그다음 한 장을 쓴다
+    if (r.rerolls > 0 && Math.random() < 0.1) r = reroll(r);
+    if (r.hand.length === 0) break;
+    r = play(r, one(r.hand));
   }
   return r;
 }
@@ -44,7 +45,7 @@ const runs = Number(process.env.TUBESIM_RUNS ?? 1);
 const fixed = process.env.TUBESIM_CADENCE;
 
 if (runs === 1) {
-  const r = play(fixed);
+  const r = playRun(fixed);
   for (const ln of r.lines) console.log(`  ${ln.tone.padEnd(4)} ${ln.text}`);
   console.log('\n  ---');
   console.log(`  ${r.dead?.name} · 구독자 ${fmtSubs(r.subs)}`);
@@ -64,7 +65,7 @@ if (runs === 1) {
   let subSum = 0;
   for (let i = 0; i < runs; i += 1) {
     const cad = fixed ?? one(CADENCES).id;
-    const r = play(cad);
+    const r = playRun(cad);
     end[r.dead?.name ?? '?'] = (end[r.dead?.name ?? '?'] ?? 0) + 1;
     byCad[cad] = byCad[cad] ?? { n: 0, subs: 0 };
     byCad[cad].n += 1;

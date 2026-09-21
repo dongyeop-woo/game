@@ -91,7 +91,7 @@ export const STAGES: Stage[] = [
     from: 0,
     goal: 1000,
     days: 10,
-    base: 18,
+    base: 7,
     actions: [
       {
         id: 'careful',
@@ -173,7 +173,7 @@ export const STAGES: Stage[] = [
     from: 1000,
     goal: 100000,
     days: 14,
-    base: 900,
+    base: 330,
     actions: [
       {
         id: 'series',

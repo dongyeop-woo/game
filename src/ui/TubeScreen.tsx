@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -6,19 +6,21 @@ import {
   CADENCES,
   CARDS,
   PAYDAY,
-  actionsOf,
+  TICKS,
   answer,
+  bodyCost,
   cadenceOf,
   conceptOf,
-  doAction,
   drawCard,
   fmtSubs,
+  play,
+  reroll,
   setCadence,
   stageOf,
   start,
   type Card,
 } from '../tube/engine';
-import type { Action, Choice, Delta, Line, Run, StatKey } from '../tube/types';
+import type { Choice, Dealt, Delta, Run, StatKey } from '../tube/types';
 import { Text } from './Text';
 
 /**
@@ -26,100 +28,93 @@ import { Text } from './Text';
  *
  * 기획은 `docs/design.md`. 지금은 무명 + 실버 구간까지 만들어져 있다.
  *
- * **버튼에 증감을 미리 보여 준다.** 고르기 전에 손익이 보여야 고민이 생긴다.
- * 다만 **숨은 축(자극·대충)은 안 보여 준다.** 보이면 최적해를 찾아 버리고,
- * 그러면 "정직하게 하려다 어느새 사이버 렉카" 가 안 나온다.
+ * 위 절반은 캐릭터, 아래 절반은 어두운 반투명 판이다. 판 안에 스탯과
+ * 카드가 있다. **카드에는 주된 이득 하나가 크게** 박히고 옆에 체력 값이
+ * 붙는다 - 고르기 전에 손익이 보여야 고민이 생긴다. 숨은 축(자극·대충)은
+ * 안 보여 준다.
  *
  * 화면은 상태를 읽기만 한다. 바꾸는 건 `tube/engine.ts` 뿐이다.
  */
 
 const P = {
-  bg: '#eaf0fa',
-  card: '#ffffff',
-  line: '#d6dfef',
+  bg: '#f6efe6',
+  panel: 'rgba(24, 28, 44, 0.86)',
+  card: 'rgba(255,255,255,0.94)',
   ink: '#1e293b',
   dim: '#64748b',
   faint: '#94a3b8',
+  onDark: '#f1f5f9',
+  onDarkDim: '#a7b0c4',
   blue: '#3b74e8',
-  blueDeep: '#2554b0',
-  good: '#16a34a',
-  bad: '#e0364a',
-  /** 구독자 숫자에만 쓰는 색. 이 게임의 주인공 숫자다 */
   sub: '#e0364a',
+  good: '#16a34a',
+  heart: '#ff5c7a',
+  tick: '#4ade80',
 };
 
-const STAT: Record<StatKey, { name: string; color: string; bg: string }> = {
-  plan: { name: '기획', color: '#2563eb', bg: '#e4edff' },
-  edit: { name: '편집', color: '#0891b2', bg: '#e0f5fa' },
-  body: { name: '체력', color: '#e0364a', bg: '#ffe6e9' },
-  mind: { name: '멘탈', color: '#7c3aed', bg: '#efe6ff' },
+/** 화면에 보이는 스탯 셋. 체력은 따로 막대로 보여 준다 - 카드가 깎아 먹는 자원이라서 */
+const STAT: Record<Exclude<StatKey, 'body'>, { name: string; color: string }> = {
+  plan: { name: '기획', color: '#4f8dff' },
+  edit: { name: '편집', color: '#22c1d6' },
+  mind: { name: '멘탈', color: '#a78bfa' },
 };
 
-const TONE: Record<Line['tone'], { color: string; strong: boolean }> = {
-  act: { color: P.ink, strong: false },
-  ev: { color: P.blueDeep, strong: true },
-  good: { color: P.good, strong: true },
-  bad: { color: P.bad, strong: true },
-  sys: { color: P.faint, strong: false },
-};
+const STAT_NAME: Record<StatKey, string> = { plan: '기획', edit: '편집', body: '체력', mind: '멘탈' };
 
-/** `Delta` 를 칩으로. 숨은 축은 뺀다 */
-function chipsOf(d: Delta) {
-  const out: { text: string; color: string; bg: string }[] = [];
-  (Object.keys(STAT) as StatKey[]).forEach((k) => {
-    const v = d[k];
-    if (!v) return;
-    out.push({ text: `${STAT[k].name} ${v > 0 ? '+' : ''}${v}`, color: STAT[k].color, bg: STAT[k].bg });
-  });
-  if (d.money) {
-    out.push({
-      text: `${d.money > 0 ? '+' : ''}${d.money.toLocaleString()}원`,
-      color: d.money > 0 ? P.good : P.bad,
-      bg: d.money > 0 ? '#e3f7e8' : '#ffe6e9',
-    });
+/**
+ * 카드에 크게 박을 주된 이득.
+ *
+ * 구독자가 붙으면 그게 주인공이다. 안 붙는 카드(공부·휴식)는 제일 많이
+ * 오르는 스탯을 앞세운다.
+ */
+function headline(r: Run, h: Dealt): { label: string; value: string; color: string } {
+  if (h.gain > 0) return { label: '구독자', value: `+${h.gain.toLocaleString()}`, color: P.sub };
+  const d = h.action.d;
+  let best: StatKey | null = null;
+  for (const k of ['plan', 'edit', 'mind', 'body'] as StatKey[]) {
+    const v = k === 'body' ? bodyCost(r, h.action) : (d[k] ?? 0);
+    if (v > 0 && (best === null || v > (d[best] ?? 0))) best = k;
   }
-  if (d.subs) {
-    out.push({
-      text: `구독 ${d.subs > 0 ? '+' : ''}${fmtSubs(Math.abs(d.subs))}`,
-      color: P.sub,
-      bg: '#ffe6e9',
-    });
+  if (best) {
+    const v = best === 'body' ? bodyCost(r, h.action) : (d[best] ?? 0);
+    const color = best === 'body' ? P.heart : STAT[best as Exclude<StatKey, 'body'>].color;
+    return { label: STAT_NAME[best], value: `+${v}`, color };
   }
-  return out;
+  if (d.money && d.money > 0) return { label: '수익', value: `+${d.money.toLocaleString()}원`, color: P.good };
+  return { label: '', value: '', color: P.dim };
 }
 
-function Chips({ d, big }: { d: Delta; big?: boolean }) {
-  return (
-    <View style={[s.chips, big && s.chipsBig]}>
-      {chipsOf(d).map((c) => (
-        <View key={c.text} style={[s.chip, big && s.chipBig, { backgroundColor: c.bg }]}>
-          <Text style={[s.chipText, big && s.chipTextBig, { color: c.color }]}>{c.text}</Text>
-        </View>
-      ))}
-    </View>
-  );
+/** 주된 이득 말고 나머지 증감. 작게 붙인다 */
+function rest(r: Run, h: Dealt, skip: string): string[] {
+  const d: Delta = { ...h.action.d, body: bodyCost(r, h.action) };
+  const out: string[] = [];
+  (['plan', 'edit', 'mind'] as const).forEach((k) => {
+    const v = d[k];
+    if (v && STAT_NAME[k] !== skip) out.push(`${STAT_NAME[k]} ${v > 0 ? '+' : ''}${v}`);
+  });
+  if (d.money && skip !== '수익') out.push(`${d.money > 0 ? '+' : ''}${d.money.toLocaleString()}원`);
+  return out;
 }
 
 export function TubeScreen() {
   const insets = useSafeAreaInsets();
-  /** 채널이 죽어도 남는 것 */
   const [cards, setCards] = useState<string[]>([]);
   const [run, setRun] = useState<Run>(() => start([]));
   const [reward, setReward] = useState<Card | null>(null);
-  const log = useRef<ScrollView>(null);
 
   const stage = stageOf(run);
   const concept = conceptOf(run.concept);
-  const acts = useMemo(() => actionsOf(run), [run]);
+  const cad = cadenceOf(run);
+  const push = useCallback((next: Run) => setRun({ ...next }), []);
 
-  const push = useCallback((next: Run) => {
-    setRun({ ...next });
-    requestAnimationFrame(() => log.current?.scrollToEnd({ animated: true }));
-  }, []);
-
-  const onAct = useCallback((a: Action) => push(doAction(run, a)), [run, push]);
+  const onPlay = useCallback((h: Dealt) => push(play(run, h)), [run, push]);
   const onChoice = useCallback((c: Choice) => push(answer(run, c)), [run, push]);
-  const onCadence = useCallback((id: string) => push(setCadence(run, id)), [run, push]);
+  const onReroll = useCallback(() => push(reroll(run)), [run, push]);
+  const onCadence = useCallback(() => {
+    // 탭할 때마다 다음 주기로 돈다. 세 개뿐이라 메뉴를 띄울 것까지 없다
+    const at = CADENCES.findIndex((c) => c.id === run.cadence);
+    push(setCadence(run, CADENCES[(at + 1) % CADENCES.length].id));
+  }, [run, push]);
 
   const onRestart = useCallback(() => {
     const got = drawCard(cards);
@@ -129,282 +124,310 @@ export function TubeScreen() {
     setRun(start(owned));
   }, [cards]);
 
-  const toGoal = Math.min(1, run.subs / stage.goal);
+  const daysLeft = stage.days - run.day + 1;
   const payIn = PAYDAY - ((run.day - 1) % PAYDAY);
+  const last = run.lines[run.lines.length - 1];
+  const ev = run.lines.filter((l) => l.tone === 'ev').slice(-1)[0];
 
   return (
-    <View style={[s.root, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
-      {/*
-        구독자가 주인공 숫자다.
-
-        참고한 화면들은 가운데에 큰 덩어리가 하나 있다. 이 게임에 그림은
-        아직 없으니 **숫자 자체를 크게** 세운다 - 키우기는 숫자가 올라가는
-        장르라 그게 그림 역할을 한다.
-      */}
-      <View style={s.hero}>
-        <View style={s.heroTop}>
-          <Text style={s.heroLabel}>구독자</Text>
-          <Text style={s.heroMoney}>
-            {run.money.toLocaleString()}원 · 정산 {payIn}일
-          </Text>
-        </View>
-        <Text style={s.heroSubs}>{run.subs.toLocaleString()}</Text>
-        <View style={s.goalBg}>
-          <View style={[s.goalBar, { width: `${toGoal * 100}%` }]} />
-        </View>
-        <Text style={s.heroWhere}>
-          {concept.name} · {stage.name} {run.day}/{stage.days}일 · 다음 {fmtSubs(stage.goal)}
-        </Text>
-      </View>
-
-      <View style={s.stats}>
-        {(Object.keys(STAT) as StatKey[]).map((k) => (
-          <View key={k} style={[s.stat, { backgroundColor: STAT[k].bg }]}>
-            <Text style={[s.statName, { color: STAT[k].color }]}>{STAT[k].name}</Text>
-            <Text style={[s.statValue, { color: STAT[k].color }]}>{run.stats[k]}</Text>
+    <View style={s.root}>
+      {/* ---------------- 위 절반: 캐릭터 */}
+      <View style={[s.scene, { paddingTop: insets.top + 8 }]}>
+        <View style={s.topBar}>
+          <View style={s.pill}>
+            <Text style={s.pillKey}>D</Text>
+            <Text style={s.pillVal}>-{daysLeft}</Text>
           </View>
-        ))}
-      </View>
+          <View style={s.pill}>
+            <Text style={s.pillVal}>{stage.name}</Text>
+          </View>
+          <View style={{ flex: 1 }} />
+          <View style={[s.pill, s.pillMoney]}>
+            <View style={s.coin} />
+            <Text style={s.pillVal}>{run.money.toLocaleString()}</Text>
+          </View>
+        </View>
 
-      {/*
-        업로드 주기.
+        <Pressable style={s.tag} onPress={onCadence}>
+          <Text style={s.tagText}>{concept.name} · {cad.name} ▾</Text>
+        </Pressable>
 
-        하루하루 고르는 것보다 위에 둔다 - 이건 행동이 아니라 전략이고,
-        바꾸는 데 하루를 안 쓴다.
-      */}
-      <View style={s.cadence}>
-        {CADENCES.map((c) => {
-          const on = c.id === run.cadence;
-          return (
-            <Pressable
-              key={c.id}
-              style={[s.cad, on && s.cadOn]}
-              onPress={() => onCadence(c.id)}
-              disabled={!!run.dead}
-            >
-              <Text style={[s.cadName, on && s.cadNameOn]}>{c.name}</Text>
-              <Text style={[s.cadHint, on && s.cadHintOn]}>{c.hint}</Text>
-            </Pressable>
-          );
-        })}
-      </View>
+        {/*
+          캐릭터 자리.
 
-      {/* 흐르는 글. 이게 게임의 본체다 */}
-      <View style={s.logCard}>
-        <ScrollView ref={log} contentContainerStyle={s.log} showsVerticalScrollIndicator={false}>
-          {run.lines.map((ln) => (
-            <Text
-              key={ln.id}
-              style={[s.line, { color: TONE[ln.tone].color }, TONE[ln.tone].strong && s.lineStrong]}
-            >
-              {ln.text}
+          그림은 사용자가 뽑아 온다. 들어오면 이 칸에 `Image` 를 놓고 아래
+          `charHint` 를 지운다. 배경 투명 PNG, 허리 위, 정면.
+        */}
+        <View style={s.charBox}>
+          <View style={s.charGhost} />
+          <Text style={s.charHint}>캐릭터 자리</Text>
+        </View>
+
+        {/* 마지막 한 줄이 말풍선으로 뜬다. 긴 글은 판 안에서 읽는다 */}
+        {last ? (
+          <View style={s.bubble}>
+            <Text style={s.bubbleText} numberOfLines={2}>
+              {last.text}
             </Text>
-          ))}
-        </ScrollView>
+          </View>
+        ) : null}
       </View>
 
-      {run.dead ? (
-        <Ending run={run} reward={reward} onRestart={onRestart} />
-      ) : run.pending ? (
-        <View style={s.pane}>
-          <View style={s.askCard}>
-            <Text style={s.askText}>{run.pending.text}</Text>
+      {/* ---------------- 아래 절반: 어두운 판 */}
+      <View style={[s.panel, { paddingBottom: insets.bottom + 10 }]}>
+        <View style={s.subRow}>
+          <View style={s.subBig}>
+            <Text style={s.subLabel}>구독자</Text>
+            <Text style={s.subVal}>{run.subs.toLocaleString()}</Text>
           </View>
-          {run.pending.choices?.map((c) => (
-            <Pressable key={c.label} style={s.choice} onPress={() => onChoice(c)}>
-              <Text style={s.choiceMark}>▶</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={s.choiceLabel}>{c.label}</Text>
-                <Chips d={c.d} />
-              </View>
-            </Pressable>
+          <View style={s.subSide}>
+            <Text style={s.subSideKey}>다음 구간</Text>
+            <Text style={s.subSideVal}>{fmtSubs(stage.goal)}</Text>
+          </View>
+          <View style={s.subSide}>
+            <Text style={s.subSideKey}>정산</Text>
+            <Text style={s.subSideVal}>{payIn}일 뒤</Text>
+          </View>
+        </View>
+
+        <View style={s.tiles}>
+          {(Object.keys(STAT) as Exclude<StatKey, 'body'>[]).map((k) => (
+            <View key={k} style={[s.tile, { backgroundColor: STAT[k].color }]}>
+              <Text style={s.tileName}>{STAT[k].name}</Text>
+              <Text style={s.tileVal}>{run.stats[k]}</Text>
+            </View>
           ))}
         </View>
-      ) : (
-        <ScrollView style={s.actList} contentContainerStyle={s.grid} showsVerticalScrollIndicator={false}>
-          {acts.map((a) => (
-            <Pressable key={a.id} style={s.act} onPress={() => onAct(a)}>
-              <Text style={s.actName}>{a.name}</Text>
-              <Text style={s.actHint}>{a.hint}</Text>
-              <Chips d={a.d} big />
-            </Pressable>
-          ))}
-        </ScrollView>
-      )}
+
+        <View style={s.bars}>
+          <View style={s.barBlock}>
+            <Text style={s.barKey}>남은 틱</Text>
+            <View style={s.ticks}>
+              {Array.from({ length: TICKS }, (_, i) => (
+                <View key={i} style={[s.tickDot, i < run.ticks && s.tickOn]} />
+              ))}
+            </View>
+          </View>
+          <View style={[s.barBlock, { flex: 1.6 }]}>
+            <View style={s.barHead}>
+              <Text style={s.barKey}>체력</Text>
+              <Text style={s.barNum}>{run.stats.body}</Text>
+            </View>
+            <View style={s.hpBg}>
+              <View style={[s.hpFill, { width: `${run.stats.body}%` }]} />
+            </View>
+          </View>
+          <Pressable
+            style={[s.reroll, run.rerolls <= 0 && s.rerollOff]}
+            onPress={onReroll}
+            disabled={run.rerolls <= 0 || !!run.dead || !!run.pending}
+          >
+            <Text style={s.rerollIcon}>↻</Text>
+            <Text style={s.rerollNum}>{run.rerolls}</Text>
+          </Pressable>
+        </View>
+
+        {run.dead ? (
+          <Ending run={run} reward={reward} onRestart={onRestart} />
+        ) : run.pending ? (
+          <View style={s.ask}>
+            <Text style={s.askText}>{run.pending.text}</Text>
+            {run.pending.choices?.map((c) => (
+              <Pressable key={c.label} style={s.choice} onPress={() => onChoice(c)}>
+                <Text style={s.choiceText}>▶ {c.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        ) : (
+          <View style={s.grid}>
+            {run.hand.map((h) => {
+              const head = headline(run, h);
+              const hp = bodyCost(run, h.action);
+              return (
+                <Pressable key={h.key} style={s.hcard} onPress={() => onPlay(h)}>
+                  <Text style={s.hTitle} numberOfLines={1}>
+                    {h.action.name}
+                  </Text>
+                  <Text style={s.hHint} numberOfLines={1}>
+                    {h.action.hint}
+                  </Text>
+                  <View style={s.hMain}>
+                    <View style={[s.hBadge, { backgroundColor: head.color }]}>
+                      <Text style={s.hBadgeText}>{head.label}</Text>
+                    </View>
+                    <Text style={[s.hBig, { color: head.color }]}>{head.value}</Text>
+                  </View>
+                  <View style={s.hFoot}>
+                    <Text style={s.hRest} numberOfLines={1}>
+                      {rest(run, h, head.label).join(' · ')}
+                    </Text>
+                    <Text style={[s.hHp, hp >= 0 && { color: P.good }]}>
+                      ♥ {hp > 0 ? '+' : ''}
+                      {hp}
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        )}
+
+        {ev && !run.dead && !run.pending ? (
+          <Text style={s.evLine} numberOfLines={1}>
+            {ev.text}
+          </Text>
+        ) : null}
+      </View>
     </View>
   );
 }
 
 /**
- * 결과 화면.
- *
- * **이게 공유물이다.** 망한 쪽이 잘된 쪽보다 더 잘 돈다 - "고소장이 왔다"
- * 가 "구독자 100만" 보다 할 말이 많다.
+ * 결과 화면. **이게 공유물이다.** 망한 쪽이 잘된 쪽보다 더 잘 돈다.
  */
 function Ending({ run, reward, onRestart }: { run: Run; reward: Card | null; onRestart: () => void }) {
   const d = run.dead!;
-  const c = cadenceOf(run);
-  const rows: [string, string][] = [
-    ['컨셉', conceptOf(run.concept).name],
-    ['주기', c.name],
-    ['잔고', `${run.money.toLocaleString()}원`],
-    ['만난 사람', run.met.length ? run.met.join(', ') : '없음'],
-  ];
   return (
-    <View style={s.pane}>
-      <View style={s.endCard}>
-        <Text style={s.endSubs}>구독자 {fmtSubs(run.subs)}</Text>
-        <Text style={s.endName}>{d.name}</Text>
-        <Text style={s.endLine}>{d.line}</Text>
-
-        <View style={s.endStats}>
-          {(Object.keys(STAT) as StatKey[]).map((k) => (
-            <View key={k} style={s.endStat}>
-              <Text style={[s.endStatName, { color: STAT[k].color }]}>{STAT[k].name}</Text>
-              <Text style={[s.endStatValue, { color: STAT[k].color }]}>{run.stats[k]}</Text>
-            </View>
-          ))}
-        </View>
-
-        {rows.map(([k, v]) => (
-          <View key={k} style={s.endRow}>
-            <Text style={s.endKey}>{k}</Text>
-            <Text style={s.endVal}>{v}</Text>
-          </View>
-        ))}
-
-        {reward ? (
-          <View style={s.cardGot}>
-            <Text style={s.cardGotName}>카드 획득 — {reward.name}</Text>
-            <Text style={s.cardGotDesc}>{reward.desc}</Text>
-          </View>
-        ) : null}
-      </View>
-
+    <ScrollView style={s.end} contentContainerStyle={{ gap: 6 }}>
+      <Text style={s.endName}>{d.name}</Text>
+      <Text style={s.endLine}>{d.line}</Text>
+      <Text style={s.endRow}>
+        구독자 {fmtSubs(run.subs)} · {conceptOf(run.concept).name} · {cadenceOf(run).name} · 잔고{' '}
+        {run.money.toLocaleString()}원
+      </Text>
+      <Text style={s.endRow}>만난 사람: {run.met.length ? run.met.join(', ') : '없음'}</Text>
+      {reward ? (
+        <Text style={s.endCard}>
+          카드 획득 — {reward.name} · {reward.desc}
+        </Text>
+      ) : null}
       <Pressable style={s.big} onPress={onRestart}>
         <Text style={s.bigText}>새 채널을 판다</Text>
       </Pressable>
-      <Text style={s.smallText}>카드 {CARDS.length}종 중 수집 중</Text>
-    </View>
+      <Text style={s.endFoot}>카드 {CARDS.length}종 중 {run.cards.length}장</Text>
+    </ScrollView>
   );
 }
 
 const s = StyleSheet.create({
-  root: { flex: 1, backgroundColor: P.bg, paddingHorizontal: 12, gap: 7 },
+  root: { flex: 1, backgroundColor: P.bg },
 
-  /*
-    구독자 덩어리.
-
-    참고한 화면들은 가운데에 큰 캐릭터가 있다. 그림이 없으니 숫자를 그
-    자리에 세운다 - 키우기는 숫자가 올라가는 장르라 숫자가 그림 역할을 한다.
-  */
-  hero: {
-    backgroundColor: P.card,
-    borderRadius: 18,
-    borderWidth: 1,
-    borderColor: P.line,
-    paddingHorizontal: 16,
-    paddingTop: 10,
-    paddingBottom: 12,
-  },
-  heroTop: { flexDirection: 'row', alignItems: 'baseline' },
-  heroLabel: { color: P.dim, fontSize: 13, flex: 1 },
-  heroMoney: { color: P.faint, fontSize: 12 },
-  heroSubs: { color: P.sub, fontSize: 44, lineHeight: 52, letterSpacing: -1 },
-  heroWhere: { color: P.dim, fontSize: 12, marginTop: 7 },
-
-  goalBg: { height: 10, borderRadius: 999, backgroundColor: '#dbe3f2', overflow: 'hidden' },
-  goalBar: { height: 10, borderRadius: 999, backgroundColor: P.sub },
-
-  stats: { flexDirection: 'row', gap: 6 },
-  stat: { flex: 1, borderRadius: 13, paddingVertical: 9, alignItems: 'center' },
-  statName: { fontSize: 12, opacity: 0.85 },
-  statValue: { fontSize: 25, marginTop: -3 },
-
-  cadence: { flexDirection: 'row', gap: 6 },
-  cad: {
-    flex: 1,
-    borderRadius: 13,
-    paddingVertical: 9,
-    alignItems: 'center',
-    backgroundColor: P.card,
-    borderWidth: 1,
-    borderColor: P.line,
-  },
-  cadOn: { backgroundColor: P.blue, borderColor: P.blueDeep },
-  cadName: { color: P.dim, fontSize: 15 },
-  cadNameOn: { color: '#ffffff' },
-  cadHint: { color: P.faint, fontSize: 10, marginTop: 1 },
-  cadHintOn: { color: '#cfe0ff' },
-
-  logCard: { flex: 1, minHeight: 110, backgroundColor: P.card, borderRadius: 16, borderWidth: 1, borderColor: P.line },
-  log: { padding: 14, gap: 9 },
-  line: { fontSize: 14, lineHeight: 21 },
-  lineStrong: { fontSize: 15 },
-
-  pane: { gap: 6 },
-  /*
-    행동을 두 칸 격자로.
-
-    줄 일곱 개를 세로로 쌓으면 글씨가 작아지고 뭘 고르는지 안 읽힌다.
-    큰 카드 둘씩이 참고한 화면 쪽에 가깝다 - 거기는 버튼이 아예 두 개다.
-  */
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
-  actList: { flexGrow: 0, maxHeight: 268 },
-
-  act: {
-    width: '48.4%',
-    backgroundColor: P.card,
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: P.line,
-    paddingHorizontal: 12,
-    paddingTop: 10,
-    paddingBottom: 9,
-    gap: 2,
-  },
-  actName: { color: P.ink, fontSize: 17 },
-  actHint: { color: P.faint, fontSize: 11 },
-
-  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end' },
-  chipsBig: { justifyContent: 'flex-start', marginTop: 5 },
-  chip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
-  chipBig: { paddingHorizontal: 9, paddingVertical: 4 },
-  chipText: { fontSize: 11 },
-  chipTextBig: { fontSize: 13 },
-
-  askCard: { backgroundColor: '#1e3a8a', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
-  askText: { color: '#eaf1ff', fontSize: 15, lineHeight: 22 },
-  choice: {
-    backgroundColor: '#dce8ff',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#b8cdf5',
-    paddingHorizontal: 12,
-    paddingVertical: 9,
+  scene: { flex: 1, paddingHorizontal: 12, backgroundColor: '#f3e6d6' },
+  topBar: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  pill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 9,
+    gap: 3,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderRadius: 999,
+    paddingHorizontal: 11,
+    paddingVertical: 5,
   },
-  choiceMark: { color: P.blue, fontSize: 12 },
-  choiceLabel: { color: P.blueDeep, fontSize: 15 },
+  pillMoney: { paddingLeft: 7 },
+  pillKey: { color: P.faint, fontSize: 11 },
+  pillVal: { color: P.ink, fontSize: 14 },
+  coin: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#f5bf42', borderWidth: 2, borderColor: '#d9a12a' },
+  tag: {
+    alignSelf: 'flex-start',
+    marginTop: 8,
+    backgroundColor: 'rgba(30,58,138,0.85)',
+    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+  },
+  tagText: { color: '#ffffff', fontSize: 12 },
 
-  endCard: { backgroundColor: P.card, borderRadius: 16, borderWidth: 1, borderColor: P.line, padding: 16 },
-  endSubs: { color: P.sub, fontSize: 15 },
-  endName: { color: P.ink, fontSize: 23, marginTop: -1 },
-  endLine: { color: P.dim, fontSize: 13, marginTop: 2, marginBottom: 10 },
-  endStats: { flexDirection: 'row', gap: 6, marginBottom: 10 },
-  endStat: { flex: 1, alignItems: 'center' },
-  endStatName: { fontSize: 11, opacity: 0.8 },
-  endStatValue: { fontSize: 17, marginTop: -3 },
-  endRow: { flexDirection: 'row', gap: 8, paddingVertical: 1 },
-  endKey: { color: P.faint, fontSize: 12, width: 62 },
-  endVal: { color: P.ink, fontSize: 12, flex: 1 },
-  cardGot: { backgroundColor: '#e3f7e8', borderRadius: 10, padding: 10, marginTop: 10 },
-  cardGotName: { color: P.good, fontSize: 14 },
-  cardGotDesc: { color: '#2f7a48', fontSize: 12, marginTop: 1 },
+  charBox: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 6 },
+  charGhost: {
+    width: 190,
+    height: 210,
+    borderRadius: 95,
+    backgroundColor: 'rgba(255,255,255,0.45)',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.8)',
+    borderStyle: 'dashed',
+  },
+  charHint: { position: 'absolute', bottom: 100, color: 'rgba(30,41,59,0.45)', fontSize: 13 },
 
-  big: { backgroundColor: P.blue, borderRadius: 14, paddingVertical: 14, alignItems: 'center' },
+  bubble: {
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    marginBottom: 8,
+  },
+  bubbleText: { color: P.ink, fontSize: 13, lineHeight: 19 },
+
+  panel: {
+    backgroundColor: P.panel,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    gap: 8,
+  },
+
+  subRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  subBig: { flex: 1.5, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
+  subLabel: { color: P.onDarkDim, fontSize: 11 },
+  subVal: { color: '#ffffff', fontSize: 26, marginTop: -3 },
+  subSide: { flex: 1, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
+  subSideKey: { color: P.onDarkDim, fontSize: 11 },
+  subSideVal: { color: P.onDark, fontSize: 15, marginTop: -1 },
+
+  tiles: { flexDirection: 'row', gap: 6 },
+  tile: { flex: 1, borderRadius: 11, paddingVertical: 7, paddingHorizontal: 10 },
+  tileName: { color: 'rgba(255,255,255,0.85)', fontSize: 11 },
+  tileVal: { color: '#ffffff', fontSize: 22, marginTop: -3 },
+
+  bars: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  barBlock: { flex: 1, gap: 4 },
+  barHead: { flexDirection: 'row', justifyContent: 'space-between' },
+  barKey: { color: P.onDarkDim, fontSize: 11 },
+  barNum: { color: P.onDark, fontSize: 12 },
+  ticks: { flexDirection: 'row', gap: 5 },
+  tickDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: 'rgba(255,255,255,0.18)' },
+  tickOn: { backgroundColor: P.tick },
+  hpBg: { height: 10, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.15)', overflow: 'hidden' },
+  hpFill: { height: 10, borderRadius: 999, backgroundColor: '#2dd4bf' },
+  reroll: { alignItems: 'center', paddingHorizontal: 6 },
+  rerollOff: { opacity: 0.35 },
+  rerollIcon: { color: P.onDark, fontSize: 22, lineHeight: 24 },
+  rerollNum: { color: P.onDarkDim, fontSize: 11, marginTop: -2 },
+
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  hcard: {
+    width: '48.6%',
+    backgroundColor: P.card,
+    borderRadius: 14,
+    paddingHorizontal: 11,
+    paddingTop: 9,
+    paddingBottom: 8,
+    gap: 3,
+  },
+  hTitle: { color: P.ink, fontSize: 15 },
+  hHint: { color: P.faint, fontSize: 10 },
+  hMain: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
+  hBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  hBadgeText: { color: '#ffffff', fontSize: 10 },
+  hBig: { fontSize: 22 },
+  hFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
+  hRest: { color: P.dim, fontSize: 10, flex: 1 },
+  hHp: { color: P.heart, fontSize: 13 },
+
+  evLine: { color: '#ffe9a8', fontSize: 12, paddingHorizontal: 4 },
+
+  ask: { gap: 6 },
+  askText: { color: P.onDark, fontSize: 15, lineHeight: 22, paddingHorizontal: 4, paddingBottom: 4 },
+  choice: { backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  choiceText: { color: '#ffffff', fontSize: 15 },
+
+  end: { maxHeight: 300 },
+  endName: { color: '#ffffff', fontSize: 24 },
+  endLine: { color: P.onDarkDim, fontSize: 13 },
+  endRow: { color: P.onDark, fontSize: 12 },
+  endCard: { color: '#86efac', fontSize: 13, marginTop: 4 },
+  big: { backgroundColor: P.blue, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
   bigText: { color: '#ffffff', fontSize: 17 },
-  smallText: { color: P.dim, fontSize: 12, textAlign: 'center', paddingVertical: 6 },
+  endFoot: { color: P.onDarkDim, fontSize: 11, textAlign: 'center' },
 });

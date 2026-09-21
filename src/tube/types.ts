@@ -63,6 +63,20 @@ export interface Action {
   when?: (r: Run) => boolean;
 }
 
+/**
+ * 손에 든 카드 한 장.
+ *
+ * 행동은 고정 메뉴가 아니라 **뽑아서 받는 패**다. 뽑을 때 구독자 이득을
+ * 미리 굴려 둔다 - 그래야 카드에 "+230" 이 박히고, 두 장을 비교할 수 있고,
+ * 새로고침이 의미를 가진다.
+ */
+export interface Dealt {
+  key: number;
+  action: Action;
+  /** 이 카드를 쓰면 붙는 구독자. 뽑을 때 정해진다 */
+  gain: number;
+}
+
 /** 이벤트의 선택지 */
 export interface Choice {
   label: string;
@@ -155,6 +169,13 @@ export interface Run {
   yellow: number;
   /** 선을 넘어 경고받은 횟수. 세 번째에 고소가 온다 */
   warned: number;
+  /** 오늘 남은 행동 수 */
+  ticks: number;
+  /** 손에 든 카드 */
+  hand: Dealt[];
+  /** 남은 새로고침 */
+  rerolls: number;
+  nextKey: number;
   lines: Line[];
   nextLineId: number;
   /** 지금 답을 기다리는 이벤트 */

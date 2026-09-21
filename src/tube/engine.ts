@@ -1,11 +1,12 @@
 import { CONCEPTS, EVENTS, STAGES } from './content';
-import type { Action, Choice, Concept, Death, Delta, Ev, Line, Run, Stage } from './types';
+import type { Action, Choice, Concept, Dealt, Death, Delta, Ev, Line, Run, Stage } from './types';
 
 /**
  * 유튜버 키우기 - 굴러가는 부분.
  *
- * 한 판이 곧 채널 하나다. 하루에 뭘 올릴지 고르면 구독자가 붙고, 가끔 일이
- * 끼어들고, 정산일에 돈이 들어오고, 구간 끝에서 다음 구간으로 올라간다.
+ * 한 판이 곧 채널 하나다. 하루에 틱이 셋이고, 손에 든 카드 넉 장 중 하나를
+ * 쓰면 틱이 하나 줄고, 틱이 다 떨어지면 하루가 넘어간다. 닷새마다 돈이
+ * 들어오고, 구간 끝에서 다음 구간으로 올라간다.
  *
  * 상태는 **한 덩이**로 들고 다닌다 (`Run`). 화면은 읽기만 하고, 바꾸는 건
  * 여기 있는 함수뿐이다.
@@ -13,6 +14,15 @@ import type { Action, Choice, Concept, Death, Delta, Ev, Line, Run, Stage } from
 
 const CAP = 99;
 const clamp = (v: number) => Math.max(0, Math.min(CAP, v));
+
+/** 하루에 쓰는 행동 수 */
+export const TICKS = 3;
+/** 손에 드는 카드 수 */
+export const HAND = 4;
+/** 한 채널에서 쓸 수 있는 새로고침 */
+export const REROLLS = 8;
+/** 며칠마다 애드센스가 들어오는가 */
+export const PAYDAY = 5;
 
 function pick<T>(list: T[], weight: (t: T) => number): T {
   const total = list.reduce((s, t) => s + weight(t), 0);
@@ -44,9 +54,8 @@ export function fmtSubs(n: number): string {
 /**
  * 업로드 주기.
  *
- * **이 게임의 중심 맞바꿈이다.** 물량으로 알고리즘을 두드릴지, 한 편에
- * 정성을 쏟을지. 실제로 채널을 하는 사람이 매주 다시 하는 고민이라
- * 하루하루 고르는 것보다 위에 둔다.
+ * **이 게임의 중심 맞바꿈이다.** 물량으로 알고리즘을 두드릴지 한 편에 정성을
+ * 쏟을지. 실제로 채널을 하는 사람이 매주 다시 하는 고민이라 카드 위에 둔다.
  */
 export interface Cadence {
   id: string;
@@ -78,19 +87,11 @@ export function stageOf(r: Run): Stage {
   return STAGES[Math.min(r.stage, STAGES.length - 1)];
 }
 
-export function actionsOf(r: Run): Action[] {
-  return stageOf(r).actions.filter((a) => !a.when || a.when(r));
-}
-
-/** 며칠마다 애드센스가 들어오는가 */
-export const PAYDAY = 5;
-
 /**
  * 정산으로 들어올 돈.
  *
  * **기대보다 적게 나와야 한다.** 그게 이 직업의 분노 담당이다. 구독자
- * 만 명이면 한 달에 얼마냐고 다들 묻는데, 실제로는 그 숫자를 듣고
- * 다들 놀란다.
+ * 만 명이면 한 달에 얼마냐고 다들 묻는데, 숫자를 듣고 다들 놀란다.
  */
 export function payout(r: Run): number {
   const rpm = 1.1 * (r.yellow > 0 ? 0.25 : 1);
@@ -101,6 +102,13 @@ function say(r: Run, text: string, tone: Line['tone']) {
   r.lines.push({ id: r.nextLineId++, text, tone });
   r.lastLine = text;
   if (r.lines.length > 60) r.lines.splice(0, r.lines.length - 60);
+}
+
+/** 카드 한 장에 붙는 체력 값. 주기가 빠를수록 더 깎인다 */
+export function bodyCost(r: Run, a: Action): number {
+  const b = a.d.body ?? 0;
+  if (b >= 0) return b;
+  return Math.round(b * cadenceOf(r).toll);
 }
 
 function apply(r: Run, d: Delta) {
@@ -114,6 +122,46 @@ function apply(r: Run, d: Delta) {
   r.lazy += d.lazy ?? 0;
 }
 
+// ------------------------------------------------------------------ 카드
+
+/**
+ * 영상 하나가 데려오는 사람 수.
+ *
+ * **계산해서 붙인다.** 고정값으로 주면 스탯을 올릴 이유가 없어진다.
+ * 기획이 노출을 만들고 편집이 이탈을 막는다. 자극은 당장 잘 먹히지만
+ * 그만큼 다른 데서 값을 치른다.
+ *
+ * 카드를 **뽑을 때** 굴린다. 그래야 카드에 숫자가 박히고 비교가 된다.
+ */
+function reachOf(r: Run, a: Action): number {
+  if (!a.reach) return 0;
+  const c = cadenceOf(r);
+  const skill = (1 + r.stats.plan / 26) * (1 + r.stats.edit / 34);
+  const spice = 1 + Math.max(0, r.spice) * 0.045;
+  const luck = 0.55 + Math.random() * 1.1;
+  return Math.round(stageOf(r).base * a.reach * c.videos * c.quality * skill * spice * luck);
+}
+
+function dealOne(r: Run): Dealt {
+  const pool = stageOf(r).actions.filter((a) => !a.when || a.when(r));
+  const action = one(pool);
+  return { key: r.nextKey++, action, gain: reachOf(r, action) };
+}
+
+/** 손이 넉 장이 되게 채운다 */
+function fill(r: Run) {
+  while (r.hand.length < HAND) r.hand.push(dealOne(r));
+}
+
+/** 손을 통째로 다시 뽑는다. 횟수가 정해져 있다 */
+export function reroll(r: Run): Run {
+  if (r.dead || r.pending || r.rerolls <= 0) return r;
+  r.rerolls -= 1;
+  r.hand = [];
+  fill(r);
+  return r;
+}
+
 // ------------------------------------------------------------------ 시작
 
 export function start(cards: string[] = []): Run {
@@ -124,7 +172,7 @@ export function start(cards: string[] = []): Run {
     seed: Math.floor(Math.random() * 1e9),
     stage: 0,
     day: 1,
-    stats: { plan: 10, edit: 10, body: 20, mind: 20 },
+    stats: { plan: 10, edit: 10, body: 60, mind: 40 },
     subs: 0,
     money: 300,
     spice: 0,
@@ -133,6 +181,10 @@ export function start(cards: string[] = []): Run {
     cadence: 'week3',
     yellow: 0,
     warned: 0,
+    ticks: TICKS,
+    hand: [],
+    rerolls: REROLLS,
+    nextKey: 1,
     lines: [],
     nextLineId: 1,
     pending: null,
@@ -148,13 +200,14 @@ export function start(cards: string[] = []): Run {
 
   say(r, `${concept.name}${josa(concept.name, '으로', '로')} 채널을 팠다.`, 'sys');
   say(r, concept.line, 'ev');
+  fill(r);
   return r;
 }
 
 // ------------------------------------------------------------------ 하루
 
 function rollEvent(r: Run): Ev | null {
-  if (Math.random() > 0.38) return null;
+  if (Math.random() > 0.55) return null;
   const s = stageOf(r);
   const pool = EVENTS.filter(
     (e) => e.at.includes(s.id) && !(e.once && r.seen.includes(e.id)) && (!e.when || e.when(r)),
@@ -162,27 +215,6 @@ function rollEvent(r: Run): Ev | null {
   return pool.length ? pick(pool, (e) => e.weight) : null;
 }
 
-/**
- * 영상 하나가 데려오는 사람 수.
- *
- * **계산해서 붙인다.** 고정값으로 주면 스탯을 올릴 이유가 없어진다.
- * 기획이 노출을 만들고 편집이 이탈을 막는다. 자극은 당장 잘 먹히지만
- * 그만큼 다른 데서 값을 치른다.
- */
-function reachOf(r: Run, a: Action): number {
-  if (!a.reach) return 0;
-  const c = cadenceOf(r);
-  const skill = (1 + r.stats.plan / 26) * (1 + r.stats.edit / 34);
-  const spice = 1 + Math.max(0, r.spice) * 0.045;
-  const luck = 0.55 + Math.random() * 1.1;
-  return Math.round(stageOf(r).base * a.reach * c.videos * c.quality * skill * spice * luck);
-}
-
-/**
- * 채널이 끝났는지 본다.
- *
- * 스탯이 0 인 것과 채널이 죽는 것은 다르다 - 기획이 0 이어도 올리기는 한다.
- */
 function checkDead(r: Run): Death | null {
   if (r.stats.body <= 0) {
     return { name: '번아웃', line: '카메라를 켜는 게 무서워진 지 오래였다.', subs: r.subs };
@@ -205,69 +237,6 @@ export const KILLS: Record<string, Death> = {
   quit: { name: '조용히 접었다', line: '마지막 영상의 조회수는 백이 안 됐다.', subs: 0 },
 };
 
-export function doAction(r: Run, action: Action): Run {
-  if (r.dead || r.pending) return r;
-
-  const c = cadenceOf(r);
-  const d: Delta = { ...action.d };
-  // 주기가 빠를수록 몸이 더 깎인다. 올라가는 건 그대로 둔다
-  if (d.body && d.body < 0) d.body = Math.round(d.body * c.toll);
-  apply(r, d);
-
-  let line = one(action.lines);
-  if (line === r.lastLine && action.lines.length > 1) {
-    line = one(action.lines.filter((t) => t !== line));
-  }
-  say(r, line, 'act');
-
-  const got = reachOf(r, action);
-  if (got > 0) {
-    r.subs += got;
-    say(r, `구독자 +${got.toLocaleString()}`, 'good');
-  } else if (action.reach) {
-    say(r, '조회수가 안 나왔다.', 'sys');
-  }
-
-  const ev = rollEvent(r);
-  if (ev) {
-    if (ev.choices) {
-      r.pending = ev;
-      return r;
-    }
-    say(r, ev.text, 'ev');
-    if (ev.d) apply(r, ev.d);
-    if (ev.meets && !r.met.includes(ev.meets)) r.met.push(ev.meets);
-    if (ev.once) r.seen.push(ev.id);
-  }
-  return advance(r);
-}
-
-export function answer(r: Run, choice: Choice): Run {
-  const ev = r.pending;
-  if (!ev) return r;
-  r.pending = null;
-  if (ev.once) r.seen.push(ev.id);
-  say(r, ev.text, 'ev');
-  apply(r, choice.d);
-  say(r, choice.line, choice.kills ? 'bad' : 'ev');
-  const met = choice.meets ?? ev.meets;
-  if (met && !r.met.includes(met)) r.met.push(met);
-  if (choice.kills) {
-    r.dead = { ...KILLS[choice.kills], subs: r.subs };
-    return r;
-  }
-  return advance(r);
-}
-
-/** 업로드 주기를 바꾼다. 하루를 안 쓴다 - 전략이지 행동이 아니다 */
-export function setCadence(r: Run, id: string): Run {
-  if (r.dead || r.cadence === id) return r;
-  r.cadence = id;
-  const c = cadenceOf(r);
-  say(r, `업로드 주기를 ${c.name}${josa(c.name, '으로', '로')} 바꿨다.`, 'sys');
-  return r;
-}
-
 /**
  * 선을 넘었는지 본다.
  *
@@ -276,7 +245,7 @@ export function setCadence(r: Run, id: string): Run {
  * 끝낸다.
  */
 function checkLine(r: Run): boolean {
-  const over = [16, 24, 32];
+  const over = [40, 60, 80];
   const step = over.findIndex((v) => r.spice < v);
   const level = step < 0 ? over.length : step;
   if (level <= r.warned) return false;
@@ -294,9 +263,43 @@ function checkLine(r: Run): boolean {
   return true;
 }
 
-function advance(r: Run): Run {
-  if (checkLine(r)) return r;
+/** 카드 한 장을 쓴다. 틱이 하나 줄고, 다 떨어지면 하루가 넘어간다 */
+export function play(r: Run, card: Dealt): Run {
+  if (r.dead || r.pending) return r;
+  const at = r.hand.findIndex((h) => h.key === card.key);
+  if (at < 0) return r;
 
+  const a = card.action;
+  apply(r, { ...a.d, body: bodyCost(r, a) });
+
+  let line = one(a.lines);
+  if (line === r.lastLine && a.lines.length > 1) line = one(a.lines.filter((t) => t !== line));
+  say(r, line, 'act');
+
+  if (card.gain > 0) {
+    r.subs += card.gain;
+    say(r, `구독자 +${card.gain.toLocaleString()}`, 'good');
+  }
+
+  // 쓴 카드는 빠지고 새 카드가 들어온다
+  r.hand.splice(at, 1);
+  fill(r);
+
+  r.ticks -= 1;
+  if (r.ticks <= 0) return endDay(r);
+  return r;
+}
+
+/**
+ * 하루가 넘어간다.
+ *
+ * 죽음과 선 넘기를 먼저 보고, 날짜를 넘기고, 정산을 하고, 구간을 보고,
+ * 마지막에 일이 하나 끼어든다. 일은 맨 뒤여야 한다 - 고르는 일이면
+ * 여기서 멈추는데, 그 앞에서 날짜가 이미 넘어가 있어야 답한 뒤 다시
+ * 넘길 일이 없다.
+ */
+function endDay(r: Run): Run {
+  if (checkLine(r)) return r;
   const dead = checkDead(r);
   if (dead) {
     r.dead = dead;
@@ -304,8 +307,8 @@ function advance(r: Run): Run {
   }
 
   if (r.yellow > 0) r.yellow -= 1;
-
   r.day += 1;
+  r.ticks = TICKS;
 
   // 정산일. 기대보다 적게 들어오는 게 이 직업의 분노 담당이다
   if ((r.day - 1) % PAYDAY === 0 && r.subs > 0) {
@@ -328,14 +331,61 @@ function advance(r: Run): Run {
       return r;
     }
     say(r, `${stageOf(r).name} 시작.`, 'sys');
+    r.hand = [];
+    fill(r);
     return r;
   }
-
   if (r.day > s.days) {
-    // 구간 안에 목표를 못 채웠다. 여기서 끝난다
     r.dead = { ...KILLS.quit, subs: r.subs };
     return r;
   }
+
+  // 손을 새로 뽑는다. 어제 남긴 패는 오늘 안 남는다
+  r.hand = [];
+  fill(r);
+
+  const ev = rollEvent(r);
+  if (ev) {
+    if (ev.choices) {
+      r.pending = ev;
+      return r;
+    }
+    say(r, ev.text, 'ev');
+    if (ev.d) apply(r, ev.d);
+    if (ev.meets && !r.met.includes(ev.meets)) r.met.push(ev.meets);
+    if (ev.once) r.seen.push(ev.id);
+  }
+  return r;
+}
+
+/** 이벤트 선택지를 고른다. 날짜는 이미 넘어가 있으니 여기서는 안 넘긴다 */
+export function answer(r: Run, choice: Choice): Run {
+  const ev = r.pending;
+  if (!ev) return r;
+  r.pending = null;
+  if (ev.once) r.seen.push(ev.id);
+  say(r, ev.text, 'ev');
+  apply(r, choice.d);
+  say(r, choice.line, choice.kills ? 'bad' : 'ev');
+  const met = choice.meets ?? ev.meets;
+  if (met && !r.met.includes(met)) r.met.push(met);
+  if (choice.kills) {
+    r.dead = { ...KILLS[choice.kills], subs: r.subs };
+    return r;
+  }
+  const dead = checkDead(r);
+  if (dead) r.dead = dead;
+  return r;
+}
+
+/** 업로드 주기를 바꾼다. 틱을 안 쓴다 - 전략이지 행동이 아니다 */
+export function setCadence(r: Run, id: string): Run {
+  if (r.dead || r.cadence === id) return r;
+  r.cadence = id;
+  const c = cadenceOf(r);
+  say(r, `업로드 주기를 ${c.name}${josa(c.name, '으로', '로')} 바꿨다.`, 'sys');
+  // 손에 든 카드의 이득은 주기로 계산한 것이라 다시 뽑는다
+  r.hand = r.hand.map((h) => ({ ...h, gain: reachOf(r, h.action) }));
   return r;
 }
 
