@@ -39,3 +39,15 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# 받아 온 원본 에셋 묶음 (220MB).
+# 구운 결과만 커밋한다 (`assets/units/cat`, `assets/enemies`, `assets/fx`).
+# 다시 구울 일이 있으면 craftpix.net 에서 같은 이름으로 내려받으면 된다.
+assets/craftpix-net-*/
+
+# 참고용으로 받아 둔 영상
+*.mp4
+
+# 3D 로 만들어 보다 만 것들 (한 개 17MB)
+assets/units/at.glb
+assets/units/test2.glb
