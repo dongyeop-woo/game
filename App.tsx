@@ -11,6 +11,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { UNITS } from './src/game/content';
 import { GameProvider, useMeta } from './src/game/GameContext';
 import { DefenseScreen } from './src/ui/DefenseScreen';
+import { LifeScreen } from './src/ui/LifeScreen';
 import { Board3D } from './src/ui/Board3D';
 import { CodexScreen } from './src/ui/CodexScreen';
 import { FriendScreen } from './src/ui/FriendScreen';
@@ -68,6 +69,7 @@ function useBackgroundReady() {
 
 type Screen =
   | { name: 'home' }
+  | { name: 'life' }
   | { name: 'battle'; stageId: string; mode: 'tutorial' | 'normal' | 'pvp' }
   | { name: 'missions' }
   | { name: 'codex' }
@@ -117,7 +119,7 @@ function Root() {
   }, []);
 
   // 홈은 정비 화면이다
-  const [screen, setScreen] = useState<Screen>({ name: 'home' });
+  const [screen, setScreen] = useState<Screen>({ name: 'life' });
 
   if (!ready) {
     return (
@@ -158,6 +160,7 @@ function Root() {
         />
       ) : null}
 
+      {screen.name === 'life' ? <LifeScreen onExit={() => setScreen({ name: 'home' })} /> : null}
       {screen.name === 'board3d' ? <Board3D onBack={() => setScreen({ name: 'home' })} /> : null}
 
       {screen.name === 'missions' ? (
