@@ -88,12 +88,12 @@ function chipsOf(d: Delta) {
   return out;
 }
 
-function Chips({ d }: { d: Delta }) {
+function Chips({ d, big }: { d: Delta; big?: boolean }) {
   return (
-    <View style={s.chips}>
+    <View style={[s.chips, big && s.chipsBig]}>
       {chipsOf(d).map((c) => (
-        <View key={c.text} style={[s.chip, { backgroundColor: c.bg }]}>
-          <Text style={[s.chipText, { color: c.color }]}>{c.text}</Text>
+        <View key={c.text} style={[s.chip, big && s.chipBig, { backgroundColor: c.bg }]}>
+          <Text style={[s.chipText, big && s.chipTextBig, { color: c.color }]}>{c.text}</Text>
         </View>
       ))}
     </View>
@@ -134,26 +134,27 @@ export function TubeScreen() {
 
   return (
     <View style={[s.root, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}>
-      {/* 머리 - 구독자가 주인공이다 */}
-      <View style={s.top}>
-        <View style={{ flex: 1 }}>
-          <Text style={s.subs}>구독자 {fmtSubs(run.subs)}</Text>
-          <Text style={s.where}>
-            {concept.name} · {stage.name} {run.day}일차 / {stage.days}
+      {/*
+        구독자가 주인공 숫자다.
+
+        참고한 화면들은 가운데에 큰 덩어리가 하나 있다. 이 게임에 그림은
+        아직 없으니 **숫자 자체를 크게** 세운다 - 키우기는 숫자가 올라가는
+        장르라 그게 그림 역할을 한다.
+      */}
+      <View style={s.hero}>
+        <View style={s.heroTop}>
+          <Text style={s.heroLabel}>구독자</Text>
+          <Text style={s.heroMoney}>
+            {run.money.toLocaleString()}원 · 정산 {payIn}일
           </Text>
         </View>
-        <View style={s.money}>
-          <Text style={s.moneyText}>{run.money.toLocaleString()}원</Text>
-          <Text style={s.payIn}>정산 {payIn}일 뒤</Text>
-        </View>
-      </View>
-
-      {/* 목표까지 */}
-      <View style={s.goalWrap}>
+        <Text style={s.heroSubs}>{run.subs.toLocaleString()}</Text>
         <View style={s.goalBg}>
           <View style={[s.goalBar, { width: `${toGoal * 100}%` }]} />
         </View>
-        <Text style={s.goalText}>{fmtSubs(stage.goal)}</Text>
+        <Text style={s.heroWhere}>
+          {concept.name} · {stage.name} {run.day}/{stage.days}일 · 다음 {fmtSubs(stage.goal)}
+        </Text>
       </View>
 
       <View style={s.stats}>
@@ -220,14 +221,12 @@ export function TubeScreen() {
           ))}
         </View>
       ) : (
-        <ScrollView style={s.actList} contentContainerStyle={s.pane} showsVerticalScrollIndicator={false}>
+        <ScrollView style={s.actList} contentContainerStyle={s.grid} showsVerticalScrollIndicator={false}>
           {acts.map((a) => (
             <Pressable key={a.id} style={s.act} onPress={() => onAct(a)}>
-              <View style={{ flex: 1 }}>
-                <Text style={s.actName}>{a.name}</Text>
-                <Text style={s.actHint}>{a.hint}</Text>
-              </View>
-              <Chips d={a.d} />
+              <Text style={s.actName}>{a.name}</Text>
+              <Text style={s.actHint}>{a.hint}</Text>
+              <Chips d={a.d} big />
             </Pressable>
           ))}
         </ScrollView>
@@ -293,37 +292,49 @@ function Ending({ run, reward, onRestart }: { run: Run; reward: Card | null; onR
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: P.bg, paddingHorizontal: 12, gap: 7 },
 
-  top: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 2 },
-  subs: { color: P.sub, fontSize: 21 },
-  where: { color: P.dim, fontSize: 12, marginTop: 1 },
-  money: { alignItems: 'flex-end' },
-  moneyText: { color: P.ink, fontSize: 15 },
-  payIn: { color: P.faint, fontSize: 11 },
+  /*
+    구독자 덩어리.
 
-  goalWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  goalBg: { flex: 1, height: 8, borderRadius: 999, backgroundColor: '#dbe3f2', overflow: 'hidden' },
-  goalBar: { height: 8, borderRadius: 999, backgroundColor: P.sub },
-  goalText: { color: P.faint, fontSize: 11 },
+    참고한 화면들은 가운데에 큰 캐릭터가 있다. 그림이 없으니 숫자를 그
+    자리에 세운다 - 키우기는 숫자가 올라가는 장르라 숫자가 그림 역할을 한다.
+  */
+  hero: {
+    backgroundColor: P.card,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: P.line,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+    paddingBottom: 12,
+  },
+  heroTop: { flexDirection: 'row', alignItems: 'baseline' },
+  heroLabel: { color: P.dim, fontSize: 13, flex: 1 },
+  heroMoney: { color: P.faint, fontSize: 12 },
+  heroSubs: { color: P.sub, fontSize: 44, lineHeight: 52, letterSpacing: -1 },
+  heroWhere: { color: P.dim, fontSize: 12, marginTop: 7 },
 
-  stats: { flexDirection: 'row', gap: 5 },
-  stat: { flex: 1, borderRadius: 11, paddingVertical: 6, alignItems: 'center' },
-  statName: { fontSize: 11, opacity: 0.85 },
-  statValue: { fontSize: 18, marginTop: -3 },
+  goalBg: { height: 10, borderRadius: 999, backgroundColor: '#dbe3f2', overflow: 'hidden' },
+  goalBar: { height: 10, borderRadius: 999, backgroundColor: P.sub },
 
-  cadence: { flexDirection: 'row', gap: 5 },
+  stats: { flexDirection: 'row', gap: 6 },
+  stat: { flex: 1, borderRadius: 13, paddingVertical: 9, alignItems: 'center' },
+  statName: { fontSize: 12, opacity: 0.85 },
+  statValue: { fontSize: 25, marginTop: -3 },
+
+  cadence: { flexDirection: 'row', gap: 6 },
   cad: {
     flex: 1,
-    borderRadius: 11,
-    paddingVertical: 6,
+    borderRadius: 13,
+    paddingVertical: 9,
     alignItems: 'center',
     backgroundColor: P.card,
     borderWidth: 1,
     borderColor: P.line,
   },
   cadOn: { backgroundColor: P.blue, borderColor: P.blueDeep },
-  cadName: { color: P.dim, fontSize: 13 },
+  cadName: { color: P.dim, fontSize: 15 },
   cadNameOn: { color: '#ffffff' },
-  cadHint: { color: P.faint, fontSize: 10 },
+  cadHint: { color: P.faint, fontSize: 10, marginTop: 1 },
   cadHintOn: { color: '#cfe0ff' },
 
   logCard: { flex: 1, minHeight: 110, backgroundColor: P.card, borderRadius: 16, borderWidth: 1, borderColor: P.line },
@@ -332,25 +343,35 @@ const s = StyleSheet.create({
   lineStrong: { fontSize: 15 },
 
   pane: { gap: 6 },
-  actList: { flexGrow: 0, maxHeight: 250 },
+  /*
+    행동을 두 칸 격자로.
+
+    줄 일곱 개를 세로로 쌓으면 글씨가 작아지고 뭘 고르는지 안 읽힌다.
+    큰 카드 둘씩이 참고한 화면 쪽에 가깝다 - 거기는 버튼이 아예 두 개다.
+  */
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  actList: { flexGrow: 0, maxHeight: 268 },
 
   act: {
+    width: '48.4%',
     backgroundColor: P.card,
-    borderRadius: 14,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: P.line,
-    paddingHorizontal: 14,
-    paddingVertical: 9,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 9,
+    gap: 2,
   },
-  actName: { color: P.ink, fontSize: 15 },
-  actHint: { color: P.faint, fontSize: 11, marginTop: 1 },
+  actName: { color: P.ink, fontSize: 17 },
+  actHint: { color: P.faint, fontSize: 11 },
 
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 4, justifyContent: 'flex-end' },
+  chipsBig: { justifyContent: 'flex-start', marginTop: 5 },
   chip: { borderRadius: 999, paddingHorizontal: 8, paddingVertical: 3 },
+  chipBig: { paddingHorizontal: 9, paddingVertical: 4 },
   chipText: { fontSize: 11 },
+  chipTextBig: { fontSize: 13 },
 
   askCard: { backgroundColor: '#1e3a8a', borderRadius: 14, paddingHorizontal: 14, paddingVertical: 12 },
   askText: { color: '#eaf1ff', fontSize: 15, lineHeight: 22 },
