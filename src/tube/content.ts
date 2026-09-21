@@ -116,6 +116,7 @@ export const STAGES: Stage[] = [
         d: { edit: 3, body: -3, lazy: -2 },
         reach: 1.1,
         vibe: 'quality',
+        titles: ['3일 동안 만든 영상', '진짜 마지막 편집본', '이거 만들다 밤샘'],
         lines: [
           '컷 편집만 여섯 시간. 아무도 몰라줄 부분이다.',
           '자막 폰트를 열 번 바꿨다. 결국 처음 것으로 돌아왔다.',
@@ -129,6 +130,7 @@ export const STAGES: Stage[] = [
         d: { edit: -1, body: -1, lazy: 3 },
         reach: 0.85,
         vibe: 'volume',
+        titles: ['1편', '그냥 올려봄', '무편집 풀버전'],
         lines: [
           '컷 편집 없이 통으로 올렸다. 십 분짜리가 됐다.',
           '썸네일은 캡처 그대로 썼다.',
@@ -142,6 +144,7 @@ export const STAGES: Stage[] = [
         d: { plan: 2, mind: -1, spice: 2 },
         reach: 1.5,
         vibe: 'trend',
+        titles: ['나도 해봤다 그거', '요즘 이거 안 하면 안 됨', '늦었지만 챌린지'],
         lines: [
           '남들 다 하는 걸 했다. 조회수는 나왔다.',
           '유행 지난 밈을 썼다. 댓글이 지적했다.',
@@ -155,6 +158,7 @@ export const STAGES: Stage[] = [
         d: { plan: 1, mind: -2, spice: 5 },
         reach: 2.2,
         vibe: 'spicy',
+        titles: ['[충격] 이게 진짜였다', '아무도 모르는 사실', '(경고) 끝까지 보세요'],
         lines: [
           '내용과 상관없는 제목을 달았다. 조회수가 세 배 나왔다.',
           '썸네일에 빨간 원을 그렸다. 효과가 있었다.',
@@ -213,6 +217,7 @@ export const STAGES: Stage[] = [
         d: { plan: 4, edit: 2, body: -3, lazy: -2 },
         reach: 1.3,
         vibe: 'quality',
+        titles: ['EP.1 시작', '2편 - 드디어', '최종화 (스포 있음)'],
         lines: [
           '3부작으로 쪼갰다. 1편만 터졌다.',
           '다음 편 예고를 붙였다. 댓글이 기다린다고 했다.',
@@ -226,6 +231,7 @@ export const STAGES: Stage[] = [
         d: { mind: 2, body: -2, plan: 1 },
         reach: 1.8,
         vibe: 'social',
+        titles: ['ㅇㅇ님과 합방했습니다', '드디어 만났다', '콜라보 (풀영상)'],
         lines: [
           '나보다 큰 채널과 찍었다. 유입이 확 들어왔다.',
           '상대가 편집을 맡았다. 내 분량은 삼 분이었다.',
@@ -239,6 +245,7 @@ export const STAGES: Stage[] = [
         d: { body: -6, mind: -3, edit: 1, lazy: 2 },
         reach: 1.2,
         vibe: 'volume',
+        titles: ['매일 업로드 D+17', '오늘도 올립니다', '데일리 #23'],
         lines: [
           '삼십 일 연속 업로드. 영상 질은 내려갔다.',
           '새벽 두 시에 렌더링을 걸고 잤다.',
@@ -252,6 +259,7 @@ export const STAGES: Stage[] = [
         d: { plan: 2, mind: -3, spice: 6 },
         reach: 2.6,
         vibe: 'spicy',
+        titles: ['ㅇㅇ 논란 정리', '이번 사태 팩트체크', '결국 터졌다'],
         lines: [
           '사흘 만에 십만이 봤다. 댓글은 안 읽었다.',
           '사실 확인은 안 했다. 남들도 안 한다.',
@@ -265,6 +273,7 @@ export const STAGES: Stage[] = [
         d: { money: 400, mind: -2, spice: 3 },
         reach: 0.8,
         when: (r) => r.subs >= 3000,
+        titles: ['요즘 제가 쓰는 것 (유료광고)', '솔직 리뷰 (광고 포함)'],
         lines: [
           '첫 협찬이 들어왔다. 대본이 같이 왔다.',
           '써 보지도 않고 좋다고 했다. 통장에 찍혔다.',
@@ -278,6 +287,7 @@ export const STAGES: Stage[] = [
         d: { money: -250, body: 5, edit: 2 },
         when: (r) => r.money >= 250,
         reach: 1.1,
+        titles: ['새 편집자와 첫 영상', '편집 스타일 바꿔봤어요'],
         lines: [
           '편집을 맡기고 처음으로 여덟 시간을 잤다.',
           '내 색이 사라졌다는 댓글이 달렸다.',

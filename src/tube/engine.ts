@@ -1,5 +1,5 @@
 import { CONCEPTS, EVENTS, QUESTS, STAGES, VIBES } from './content';
-import type { Action, Choice, Concept, Dealt, Death, Delta, Ev, Line, Quest, Run, Stage } from './types';
+import type { Action, Choice, Concept, Dealt, Death, Delta, Ev, Line, Quest, Run, Stage, Video } from './types';
 
 /**
  * 유튜버 키우기 - 굴러가는 부분.
@@ -31,6 +31,16 @@ export const WEEK = 7;
  * 임시값이다. 밸런스는 만드는 사람이 정한다.
  */
 export const TREND_BOOST = 1.6;
+
+/**
+ * 구독자 한 명당 조회수·좋아요·댓글 비율. 스튜디오에 보여 주는 장식 숫자다.
+ * **임시값이다.**
+ */
+const VIEWS_PER_SUB = 55;
+const LIKE_RATE = 0.032;
+const COMMENT_RATE = 0.0025;
+/** 시청 시간(시간) = 조회수 × 평균 시청(분) / 60 */
+const AVG_MINUTES = 3.4;
 
 function pick<T>(list: T[], weight: (t: T) => number): T {
   const total = list.reduce((s, t) => s + weight(t), 0);
@@ -99,6 +109,26 @@ export function nextCadence(r: Run): Cadence | null {
 }
 
 export const vibeOf = (id: string) => VIBES.find((v) => v.id === id) ?? VIBES[0];
+
+// ------------------------------------------------------------ 스튜디오
+
+/** 지난 28일 채널 분석. 스튜디오 화면의 네 칸이다 */
+export function analytics(r: Run) {
+  const recent = r.videos.filter((v) => r.age - v.day < 28);
+  const views = recent.reduce((s, v) => s + v.views, 0);
+  const subs = recent.reduce((s, v) => s + v.gain, 0);
+  return {
+    views,
+    hours: Math.round((views * AVG_MINUTES) / 60),
+    subs,
+    revenue: Math.round(subs * 1.1 * (r.yellow > 0 ? 0.25 : 1)),
+  };
+}
+
+/** 조회수 순위. 1 이 제일 많이 본 영상 */
+export function rankOf(r: Run, v: Video): number {
+  return [...r.videos].sort((a, b) => b.views - a.views).findIndex((x) => x.id === v.id) + 1;
+}
 
 // ------------------------------------------------------------------ 퀘스트
 
@@ -254,6 +284,8 @@ export function start(cards: string[] = [], questDone: string[] = []): Run {
     used: {},
     payouts: 0,
     questDone: [...questDone],
+    age: 1,
+    videos: [],
   };
   apply(r, concept.d);
   if (cards.includes('gear')) r.stats.edit = clamp(r.stats.edit + 12);
@@ -335,7 +367,21 @@ export function play(r: Run, card: Dealt): Run {
   const before = cadenceOf(r).id;
   apply(r, { ...a.d, body: bodyCost(r, a) });
   r.used[a.id] = (r.used[a.id] ?? 0) + 1;
-  if (a.reach) r.uploads += 1;
+  if (a.reach) {
+    r.uploads += 1;
+    // 올린 영상을 남긴다. 스튜디오의 최근 영상 목록이 이걸 읽는다
+    const views = Math.round(card.gain * VIEWS_PER_SUB * (0.7 + Math.random() * 0.6));
+    r.videos.push({
+      id: r.uploads,
+      title: a.titles ? one(a.titles) : a.name,
+      day: r.age,
+      gain: card.gain,
+      views,
+      likes: Math.round(views * LIKE_RATE),
+      comments: Math.round(views * COMMENT_RATE),
+      vibe: a.vibe,
+    });
+  }
 
   // 편집이 문턱을 넘으면 주기가 바뀐다. 손에 든 카드의 이득은 옛 주기로 계산한 것이라 다시 굴린다
   const after = cadenceOf(r);
@@ -387,6 +433,7 @@ function endDay(r: Run): Run {
 
   if (r.yellow > 0) r.yellow -= 1;
   r.day += 1;
+  r.age += 1;
   r.ticks = TICKS;
 
   // 주가 바뀌면 알고리즘도 바뀐다. 바뀐 건 알려 주되 뭘로 바뀌었는지는 안 알려 준다

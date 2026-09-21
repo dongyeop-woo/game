@@ -61,6 +61,8 @@ export interface Action {
   lines: string[];
   /** 이 조건일 때만 목록에 뜬다 */
   when?: (r: Run) => boolean;
+  /** 올라간 영상의 제목. 스튜디오의 최근 영상 목록에 뜬다. 없으면 행동 이름 */
+  titles?: string[];
   /**
    * 이 영상의 결 (`VIBES` 의 id). 이번 주 알고리즘이 미는 결이면 유입이 뛴다.
    *
@@ -204,6 +206,24 @@ export interface Run {
   payouts: number;
   /** 깬 퀘스트. 채널을 새로 파도 남는다 - 배운 걸 또 시키면 짜증난다 */
   questDone: string[];
+  /** 채널을 판 뒤 며칠째인가. 구간이 바뀌어도 이어진다 */
+  age: number;
+  /** 올린 영상들. 최근 것이 뒤에 */
+  videos: Video[];
+}
+
+/** 올라간 영상 하나. 스튜디오 화면이 읽는다 */
+export interface Video {
+  id: number;
+  title: string;
+  /** 올린 날 (채널을 판 뒤 며칠째인가) */
+  day: number;
+  /** 이 영상으로 붙은 구독자 */
+  gain: number;
+  views: number;
+  likes: number;
+  comments: number;
+  vibe?: string;
 }
 
 /**

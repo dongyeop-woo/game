@@ -22,6 +22,7 @@ import {
   type Card,
 } from '../tube/engine';
 import type { Choice, Dealt, Delta, Run, StatKey } from '../tube/types';
+import { StudioScreen } from './StudioScreen';
 import { Text } from './Text';
 
 /**
@@ -116,6 +117,8 @@ export function TubeScreen() {
   const [cards, setCards] = useState<string[]>([]);
   const [run, setRun] = useState<Run>(() => start([], []));
   const [reward, setReward] = useState<Card | null>(null);
+  /** 스튜디오를 열었는가. 지금 판을 그대로 읽어 보여 준다 */
+  const [studio, setStudio] = useState(false);
 
   const stage = stageOf(run);
   const concept = conceptOf(run.concept);
@@ -141,6 +144,8 @@ export function TubeScreen() {
   const payIn = PAYDAY - ((run.day - 1) % PAYDAY);
   const toGoal = Math.min(1, run.subs / stage.goal);
   const feed = run.lines.slice(-7).reverse();
+
+  if (studio) return <StudioScreen run={run} onClose={() => setStudio(false)} />;
 
   return (
     <View style={s.root}>
@@ -182,6 +187,9 @@ export function TubeScreen() {
         <View style={[s.chip, s.chipQuiet]}>
           <Text style={s.chipQuietText}>정산 {payIn}일 뒤</Text>
         </View>
+        <Pressable style={[s.chip, s.chipStudio]} onPress={() => setStudio(true)}>
+          <Text style={s.chipText}>스튜디오</Text>
+        </Pressable>
         {/* 이번 주 알고리즘. 쇼츠를 봐서 알아내기 전엔 물음표다 */}
         <View style={[s.chip, run.trendKnown ? s.chipTrend : s.chipQuiet]}>
           <Text style={run.trendKnown ? s.chipText : s.chipQuietText}>
@@ -347,12 +355,13 @@ const s = StyleSheet.create({
   goalBar: { height: 5, borderRadius: 999, backgroundColor: P.red },
   chMeta: { color: P.faint, fontSize: 11, marginTop: 3 },
 
-  chips: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, marginTop: 10 },
+  chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 16, marginTop: 10 },
   chip: { backgroundColor: P.ink, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
   chipQuiet: { backgroundColor: P.soft },
   chipText: { color: P.bg, fontSize: 12 },
   chipQuietText: { color: P.ink, fontSize: 12 },
   chipTrend: { backgroundColor: P.red },
+  chipStudio: { backgroundColor: '#374151' },
 
   questBox: { marginHorizontal: 16, marginTop: 12, gap: 6 },
   tip: {
