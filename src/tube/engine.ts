@@ -62,13 +62,15 @@ export function fmtSubs(n: number): string {
 /**
  * 업로드 주기.
  *
- * **이 게임의 중심 맞바꿈이다.** 물량으로 알고리즘을 두드릴지 한 편에 정성을
- * 쏟을지. 실제로 채널을 하는 사람이 매주 다시 하는 고민이라 카드 위에 둔다.
+ * **고르는 게 아니라 편집 실력이 정한다.** 편집이 10인데 1일 1영상을 고를 수
+ * 있으면 말이 안 된다. 편집이 오르면 주 3편이 열리고 더 오르면 1일 1영상이
+ * 열린다 - 그래서 편집이 성장의 열쇠가 된다.
  */
 export interface Cadence {
   id: string;
   name: string;
-  hint: string;
+  /** 이 주기가 열리는 편집 값. **임시값이다.** 밸런스는 만드는 사람이 정한다 */
+  edit: number;
   /** 하루에 올라가는 영상 수. 1 보다 작으면 며칠에 한 편이다 */
   videos: number;
   /** 한 편의 완성도 배수 */
@@ -78,12 +80,23 @@ export interface Cadence {
 }
 
 export const CADENCES: Cadence[] = [
-  { id: 'week1', name: '주 1편', hint: '한 편에 다 건다', videos: 0.55, quality: 1.45, toll: 0.55 },
-  { id: 'week3', name: '주 3편', hint: '무난한 속도', videos: 1, quality: 1, toll: 1 },
-  { id: 'daily', name: '1일 1영상', hint: '알고리즘을 두드린다', videos: 1.9, quality: 0.68, toll: 1.9 },
+  { id: 'week1', name: '주 1편', edit: 0, videos: 0.55, quality: 1.45, toll: 0.55 },
+  { id: 'week3', name: '주 3편', edit: 20, videos: 1, quality: 1, toll: 1 },
+  { id: 'daily', name: '1일 1영상', edit: 45, videos: 1.9, quality: 0.68, toll: 1.9 },
 ];
 
-export const cadenceOf = (r: Run) => CADENCES.find((c) => c.id === r.cadence) ?? CADENCES[1];
+/** 지금 편집 실력으로 되는 가장 빠른 주기 */
+export function cadenceOf(r: Run): Cadence {
+  let best = CADENCES[0];
+  for (const c of CADENCES) if (r.stats.edit >= c.edit) best = c;
+  return best;
+}
+
+/** 다음 주기가 열리려면 편집이 얼마여야 하는가. 다 열렸으면 null */
+export function nextCadence(r: Run): Cadence | null {
+  const now = cadenceOf(r);
+  return CADENCES.find((c) => c.edit > now.edit) ?? null;
+}
 
 export const vibeOf = (id: string) => VIBES.find((v) => v.id === id) ?? VIBES[0];
 
@@ -221,7 +234,6 @@ export function start(cards: string[] = [], questDone: string[] = []): Run {
     spice: 0,
     lazy: 0,
     concept: concept.id,
-    cadence: 'week3',
     yellow: 0,
     warned: 0,
     ticks: TICKS,
@@ -241,7 +253,6 @@ export function start(cards: string[] = [], questDone: string[] = []): Run {
     uploads: 0,
     used: {},
     payouts: 0,
-    cadenceChanges: 0,
     questDone: [...questDone],
   };
   apply(r, concept.d);
@@ -321,9 +332,17 @@ export function play(r: Run, card: Dealt): Run {
   if (at < 0) return r;
 
   const a = card.action;
+  const before = cadenceOf(r).id;
   apply(r, { ...a.d, body: bodyCost(r, a) });
   r.used[a.id] = (r.used[a.id] ?? 0) + 1;
   if (a.reach) r.uploads += 1;
+
+  // 편집이 문턱을 넘으면 주기가 바뀐다. 손에 든 카드의 이득은 옛 주기로 계산한 것이라 다시 굴린다
+  const after = cadenceOf(r);
+  if (after.id !== before) {
+    say(r, `편집이 늘었다. 이제 ${after.name}${josa(after.name, '이', '가')} 된다.`, 'good');
+    r.hand = r.hand.map((h) => ({ ...h, gain: reachOf(r, h.action) }));
+  }
 
   let line = one(a.lines);
   if (line === r.lastLine && a.lines.length > 1) line = one(a.lines.filter((t) => t !== line));
@@ -442,19 +461,6 @@ export function answer(r: Run, choice: Choice): Run {
   }
   const dead = checkDead(r);
   if (dead) r.dead = dead;
-  checkQuests(r);
-  return r;
-}
-
-/** 업로드 주기를 바꾼다. 틱을 안 쓴다 - 전략이지 행동이 아니다 */
-export function setCadence(r: Run, id: string): Run {
-  if (r.dead || r.cadence === id) return r;
-  r.cadence = id;
-  r.cadenceChanges += 1;
-  const c = cadenceOf(r);
-  say(r, `업로드 주기를 ${c.name}${josa(c.name, '으로', '로')} 바꿨다.`, 'sys');
-  // 손에 든 카드의 이득은 주기로 계산한 것이라 다시 뽑는다
-  r.hand = r.hand.map((h) => ({ ...h, gain: reachOf(r, h.action) }));
   checkQuests(r);
   return r;
 }

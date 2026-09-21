@@ -163,14 +163,6 @@ export interface Run {
   lazy: number;
   /** 시작 컨셉 */
   concept: string;
-  /**
-   * 업로드 주기 (`CADENCES` 의 id).
-   *
-   * 이 게임의 중심 맞바꿈이다. 물량으로 알고리즘을 두드릴지 한 편에 정성을
-   * 쏟을지 - 실제로 채널을 하는 사람이 매주 다시 하는 고민이라 하루하루
-   * 고르는 것보다 위에 둔다.
-   */
-  cadence: string;
   /** 노란 딱지가 남은 날. 0 보다 크면 정산이 4분의 1 로 깎인다 */
   yellow: number;
   /** 선을 넘어 경고받은 횟수. 세 번째에 고소가 온다 */
@@ -210,8 +202,6 @@ export interface Run {
   used: Record<string, number>;
   /** 정산받은 횟수 */
   payouts: number;
-  /** 주기를 바꾼 횟수 */
-  cadenceChanges: number;
   /** 깬 퀘스트. 채널을 새로 파도 남는다 - 배운 걸 또 시키면 짜증난다 */
   questDone: string[];
 }

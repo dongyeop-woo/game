@@ -364,12 +364,12 @@ export const QUESTS: Quest[] = [
     reward: Q.small,
   },
   {
-    id: 'cadence1',
-    text: '<주 3편 ▾>을 눌러 업로드 주기 바꿔 보기',
-    tip: '물량이냐 완성도냐. 매주 다시 고민하는 겁니다.',
-    need: 1,
-    count: (r) => r.cadenceChanges,
-    reward: Q.small,
+    id: 'edit20',
+    text: '편집 20 - 주 3편 열기',
+    tip: '업로드 주기는 편집 실력이 정합니다. 편집이 오르면 더 자주 올릴 수 있습니다.',
+    need: 20,
+    count: (r) => r.stats.edit,
+    reward: Q.mid,
   },
   {
     id: 'subs1k',

@@ -3,7 +3,6 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import {
-  CADENCES,
   CARDS,
   PAYDAY,
   TICKS,
@@ -13,10 +12,10 @@ import {
   conceptOf,
   drawCard,
   fmtSubs,
+  nextCadence,
   play,
   questOf,
   reroll,
-  setCadence,
   stageOf,
   start,
   vibeOf,
@@ -121,15 +120,12 @@ export function TubeScreen() {
   const stage = stageOf(run);
   const concept = conceptOf(run.concept);
   const cad = cadenceOf(run);
+  const next = nextCadence(run);
   const push = useCallback((next: Run) => setRun({ ...next }), []);
 
   const onPlay = useCallback((h: Dealt) => push(play(run, h)), [run, push]);
   const onChoice = useCallback((c: Choice) => push(answer(run, c)), [run, push]);
   const onReroll = useCallback(() => push(reroll(run)), [run, push]);
-  const onCadence = useCallback(() => {
-    const at = CADENCES.findIndex((c) => c.id === run.cadence);
-    push(setCadence(run, CADENCES[(at + 1) % CADENCES.length].id));
-  }, [run, push]);
   const onRestart = useCallback(() => {
     const got = drawCard(cards);
     const owned = got ? [...cards, got.id] : cards;
@@ -173,9 +169,13 @@ export function TubeScreen() {
       </View>
 
       <View style={s.chips}>
-        <Pressable style={s.chip} onPress={onCadence} disabled={!!run.dead}>
-          <Text style={s.chipText}>{cad.name} ▾</Text>
-        </Pressable>
+        {/* 주기는 고르는 게 아니라 편집이 정한다. 다음 주기가 열리는 편집 값을 옆에 적어 둔다 */}
+        <View style={s.chip}>
+          <Text style={s.chipText}>
+            {cad.name}
+            {next ? `  · 편집 ${next.edit}이면 ${next.name}` : ''}
+          </Text>
+        </View>
         <View style={[s.chip, s.chipQuiet]}>
           <Text style={s.chipQuietText}>잔고 {run.money.toLocaleString()}원</Text>
         </View>

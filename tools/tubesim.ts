@@ -7,26 +7,15 @@
  *
  *   npx tsx tools/tubesim.ts                     # 한 판 자세히
  *   TUBESIM_RUNS=300 npx tsx tools/tubesim.ts    # 여러 판 통계만
- *   TUBESIM_CADENCE=daily npx tsx tools/tubesim.ts  # 주기를 고정하고
  */
 import { CONCEPTS, STAGES } from '../src/tube/content';
-import {
-  CADENCES,
-  answer,
-  conceptOf,
-  fmtSubs,
-  play,
-  reroll,
-  setCadence,
-  start,
-} from '../src/tube/engine';
+import { answer, cadenceOf, conceptOf, fmtSubs, play, reroll, start } from '../src/tube/engine';
 import type { Run } from '../src/tube/types';
 
 const one = <T,>(a: T[]) => a[Math.floor(Math.random() * a.length)];
 
-function playRun(cadence?: string): Run {
+function playRun(): Run {
   let r = start([]);
-  if (cadence) r = setCadence(r, cadence);
   let guard = 0;
   while (!r.dead && guard++ < 600) {
     if (r.pending) {
@@ -42,15 +31,14 @@ function playRun(cadence?: string): Run {
 }
 
 const runs = Number(process.env.TUBESIM_RUNS ?? 1);
-const fixed = process.env.TUBESIM_CADENCE;
 
 if (runs === 1) {
-  const r = playRun(fixed);
+  const r = playRun();
   for (const ln of r.lines) console.log(`  ${ln.tone.padEnd(4)} ${ln.text}`);
   console.log('\n  ---');
   console.log(`  ${r.dead?.name} · 구독자 ${fmtSubs(r.subs)}`);
   console.log(`  ${r.dead?.line}`);
-  console.log(`  컨셉 ${conceptOf(r.concept).name} · 주기 ${r.cadence} · 잔고 ${r.money.toLocaleString()}원`);
+  console.log(`  컨셉 ${conceptOf(r.concept).name} · 주기 ${cadenceOf(r).name} · 잔고 ${r.money.toLocaleString()}원`);
   console.log(`  기획 ${r.stats.plan} 편집 ${r.stats.edit} 체력 ${r.stats.body} 멘탈 ${r.stats.mind}`);
   console.log(`  숨은 축 자극 ${r.spice} 대충 ${r.lazy} · 만난 사람 ${r.met.join(', ') || '없음'}`);
 } else {
@@ -64,8 +52,8 @@ if (runs === 1) {
   const byCad: Record<string, { n: number; subs: number }> = {};
   let subSum = 0;
   for (let i = 0; i < runs; i += 1) {
-    const cad = fixed ?? one(CADENCES).id;
-    const r = playRun(cad);
+    const r = playRun();
+    const cad = cadenceOf(r).name;
     end[r.dead?.name ?? '?'] = (end[r.dead?.name ?? '?'] ?? 0) + 1;
     byCad[cad] = byCad[cad] ?? { n: 0, subs: 0 };
     byCad[cad].n += 1;
@@ -74,7 +62,7 @@ if (runs === 1) {
   }
   console.log(`  ${runs}판 · 평균 구독자 ${fmtSubs(Math.round(subSum / runs))}`);
   show('끝난 방식', end);
-  console.log('\n  주기별 평균 구독자');
+  console.log('\n  끝났을 때 주기별 평균 구독자');
   Object.entries(byCad).forEach(([k, v]) =>
     console.log(`    ${k.padEnd(18)} ${fmtSubs(Math.round(v.subs / v.n)).padStart(8)}  (${v.n}판)`),
   );
