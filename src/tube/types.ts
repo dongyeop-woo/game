@@ -61,6 +61,12 @@ export interface Action {
   lines: string[];
   /** 이 조건일 때만 목록에 뜬다 */
   when?: (r: Run) => boolean;
+  /**
+   * 이 영상의 결 (`VIBES` 의 id). 이번 주 알고리즘이 미는 결이면 유입이 뛴다.
+   *
+   * 결이 없는 카드(쉬기·공부)는 알고리즘과 상관없다.
+   */
+  vibe?: string;
 }
 
 /**
@@ -169,6 +175,15 @@ export interface Run {
   yellow: number;
   /** 선을 넘어 경고받은 횟수. 세 번째에 고소가 온다 */
   warned: number;
+  /**
+   * 이번 주 알고리즘이 미는 결 (`VIBES` 의 id). 매주 바뀐다.
+   *
+   * 숫자로 안 보여 준다. 카드에 박힌 구독자 수가 유독 큰 걸 보고 알아채거나,
+   * 쇼츠를 보는 카드로 알아낸다 - 실제로 피드를 보며 감을 잡는 것처럼.
+   */
+  trend: string;
+  /** 이번 주 알고리즘을 알아냈는가 */
+  trendKnown: boolean;
   /** 오늘 남은 행동 수 */
   ticks: number;
   /** 손에 든 카드 */

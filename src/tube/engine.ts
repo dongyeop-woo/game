@@ -1,4 +1,4 @@
-import { CONCEPTS, EVENTS, STAGES } from './content';
+import { CONCEPTS, EVENTS, STAGES, VIBES } from './content';
 import type { Action, Choice, Concept, Dealt, Death, Delta, Ev, Line, Run, Stage } from './types';
 
 /**
@@ -23,6 +23,14 @@ export const HAND = 4;
 export const REROLLS = 8;
 /** 며칠마다 애드센스가 들어오는가 */
 export const PAYDAY = 5;
+/** 알고리즘이 며칠마다 바뀌는가 */
+export const WEEK = 7;
+/**
+ * 이번 주 결에 맞는 영상의 유입 배수.
+ *
+ * 임시값이다. 밸런스는 만드는 사람이 정한다.
+ */
+export const TREND_BOOST = 1.6;
 
 function pick<T>(list: T[], weight: (t: T) => number): T {
   const total = list.reduce((s, t) => s + weight(t), 0);
@@ -76,6 +84,15 @@ export const CADENCES: Cadence[] = [
 ];
 
 export const cadenceOf = (r: Run) => CADENCES.find((c) => c.id === r.cadence) ?? CADENCES[1];
+
+export const vibeOf = (id: string) => VIBES.find((v) => v.id === id) ?? VIBES[0];
+
+/** 이번 주 알고리즘을 새로 뽑는다. 지난주 것과는 다르게 */
+function rollTrend(r: Run) {
+  const pool = VIBES.filter((v) => v.id !== r.trend);
+  r.trend = one(pool).id;
+  r.trendKnown = false;
+}
 
 // ------------------------------------------------------------------ 조회
 
@@ -139,7 +156,9 @@ function reachOf(r: Run, a: Action): number {
   const skill = (1 + r.stats.plan / 26) * (1 + r.stats.edit / 34);
   const spice = 1 + Math.max(0, r.spice) * 0.045;
   const luck = 0.55 + Math.random() * 1.1;
-  return Math.round(stageOf(r).base * a.reach * c.videos * c.quality * skill * spice * luck);
+  // 이번 주 알고리즘이 미는 결이면 뛴다. 숫자로는 안 알려 주니 이게 단서다
+  const trend = a.vibe && a.vibe === r.trend ? TREND_BOOST : 1;
+  return Math.round(stageOf(r).base * a.reach * c.videos * c.quality * skill * spice * luck * trend);
 }
 
 function dealOne(r: Run): Dealt {
@@ -182,6 +201,8 @@ export function start(cards: string[] = []): Run {
     yellow: 0,
     warned: 0,
     ticks: TICKS,
+    trend: '',
+    trendKnown: false,
     hand: [],
     rerolls: REROLLS,
     nextKey: 1,
@@ -200,6 +221,7 @@ export function start(cards: string[] = []): Run {
 
   say(r, `${concept.name}${josa(concept.name, '으로', '로')} 채널을 팠다.`, 'sys');
   say(r, concept.line, 'ev');
+  rollTrend(r);
   fill(r);
   return r;
 }
@@ -281,6 +303,12 @@ export function play(r: Run, card: Dealt): Run {
     say(r, `구독자 +${card.gain.toLocaleString()}`, 'good');
   }
 
+  // 쇼츠를 보면 이번 주 알고리즘을 알아낸다. 결 이름이 아니라 피드에서 본 것을 말한다
+  if (a.id === 'shorts' || a.id === 'shorts2') {
+    r.trendKnown = true;
+    say(r, vibeOf(r.trend).hint, 'ev');
+  }
+
   // 쓴 카드는 빠지고 새 카드가 들어온다
   r.hand.splice(at, 1);
   fill(r);
@@ -309,6 +337,12 @@ function endDay(r: Run): Run {
   if (r.yellow > 0) r.yellow -= 1;
   r.day += 1;
   r.ticks = TICKS;
+
+  // 주가 바뀌면 알고리즘도 바뀐다. 바뀐 건 알려 주되 뭘로 바뀌었는지는 안 알려 준다
+  if ((r.day - 1) % WEEK === 0) {
+    rollTrend(r);
+    say(r, '새 주가 시작됐다. 피드 분위기가 어딘가 달라졌다.', 'sys');
+  }
 
   // 정산일. 기대보다 적게 들어오는 게 이 직업의 분노 담당이다
   if ((r.day - 1) % PAYDAY === 0 && r.subs > 0) {

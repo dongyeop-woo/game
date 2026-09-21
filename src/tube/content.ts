@@ -82,6 +82,22 @@ export const CONCEPTS: Concept[] = [
   },
 ];
 
+// ---------------------------------------------------------------- 결
+
+/**
+ * 영상의 결. 매주 알고리즘이 이 중 하나를 민다.
+ *
+ * `hint` 는 쇼츠를 봤을 때 알림에 뜨는 글이다. 결 이름을 직접 말하지 않고
+ * 피드에서 본 것을 말한다 - 그래야 알아낸 것 같은 맛이 난다.
+ */
+export const VIBES: { id: string; name: string; hint: string }[] = [
+  { id: 'quality', name: '정성', hint: '피드에 편집 빡센 영상만 뜬다. 자막 하나하나 공들인 것들.' },
+  { id: 'volume', name: '물량', hint: '같은 채널 영상이 하루에 세 개씩 뜬다. 알고리즘이 부지런한 놈을 밀어준다.' },
+  { id: 'trend', name: '유행', hint: '다들 같은 밈을 하고 있다. 지금 안 타면 다음 주엔 늦는다.' },
+  { id: 'spicy', name: '자극', hint: '썸네일이 죄다 빨갛다. "충격" 이 안 붙은 게 없다.' },
+  { id: 'social', name: '소통', hint: '합방과 답글 영상이 줄줄이 뜬다. 혼자 하는 채널은 안 보인다.' },
+];
+
 // ---------------------------------------------------------------- 구간
 
 export const STAGES: Stage[] = [
@@ -99,6 +115,7 @@ export const STAGES: Stage[] = [
         hint: '편집에 이틀',
         d: { edit: 3, body: -3, lazy: -2 },
         reach: 1.1,
+        vibe: 'quality',
         lines: [
           '컷 편집만 여섯 시간. 아무도 몰라줄 부분이다.',
           '자막 폰트를 열 번 바꿨다. 결국 처음 것으로 돌아왔다.',
@@ -111,6 +128,7 @@ export const STAGES: Stage[] = [
         hint: '양으로 승부',
         d: { edit: -1, body: -1, lazy: 3 },
         reach: 0.85,
+        vibe: 'volume',
         lines: [
           '컷 편집 없이 통으로 올렸다. 십 분짜리가 됐다.',
           '썸네일은 캡처 그대로 썼다.',
@@ -123,6 +141,7 @@ export const STAGES: Stage[] = [
         hint: '늦으면 의미 없다',
         d: { plan: 2, mind: -1, spice: 2 },
         reach: 1.5,
+        vibe: 'trend',
         lines: [
           '남들 다 하는 걸 했다. 조회수는 나왔다.',
           '유행 지난 밈을 썼다. 댓글이 지적했다.',
@@ -135,6 +154,7 @@ export const STAGES: Stage[] = [
         hint: '"충격"',
         d: { plan: 1, mind: -2, spice: 5 },
         reach: 2.2,
+        vibe: 'spicy',
         lines: [
           '내용과 상관없는 제목을 달았다. 조회수가 세 배 나왔다.',
           '썸네일에 빨간 원을 그렸다. 효과가 있었다.',
@@ -165,6 +185,17 @@ export const STAGES: Stage[] = [
           '카메라를 안 켠 날이 얼마 만인지 세어 봤다.',
         ],
       },
+      {
+        id: 'shorts',
+        name: '쇼츠를 본다',
+        hint: '요즘 뭐가 뜨나',
+        d: { mind: 1, body: -1 },
+        reach: 0,
+        lines: [
+          '두 시간을 내렸다. 뭐가 뜨는지는 알았다.',
+          '엄지가 저릴 때까지 넘겼다. 피드가 말해 주는 게 있었다.',
+        ],
+      },
     ],
   },
   {
@@ -181,6 +212,7 @@ export const STAGES: Stage[] = [
         hint: '다음 편을 기다리게',
         d: { plan: 4, edit: 2, body: -3, lazy: -2 },
         reach: 1.3,
+        vibe: 'quality',
         lines: [
           '3부작으로 쪼갰다. 1편만 터졌다.',
           '다음 편 예고를 붙였다. 댓글이 기다린다고 했다.',
@@ -193,6 +225,7 @@ export const STAGES: Stage[] = [
         hint: '남의 구독자를 빌린다',
         d: { mind: 2, body: -2, plan: 1 },
         reach: 1.8,
+        vibe: 'social',
         lines: [
           '나보다 큰 채널과 찍었다. 유입이 확 들어왔다.',
           '상대가 편집을 맡았다. 내 분량은 삼 분이었다.',
@@ -205,6 +238,7 @@ export const STAGES: Stage[] = [
         hint: '알고리즘은 성실함을 좋아한다',
         d: { body: -6, mind: -3, edit: 1, lazy: 2 },
         reach: 1.2,
+        vibe: 'volume',
         lines: [
           '삼십 일 연속 업로드. 영상 질은 내려갔다.',
           '새벽 두 시에 렌더링을 걸고 잤다.',
@@ -217,6 +251,7 @@ export const STAGES: Stage[] = [
         hint: '빠를수록 좋다',
         d: { plan: 2, mind: -3, spice: 6 },
         reach: 2.6,
+        vibe: 'spicy',
         lines: [
           '사흘 만에 십만이 봤다. 댓글은 안 읽었다.',
           '사실 확인은 안 했다. 남들도 안 한다.',
@@ -259,6 +294,17 @@ export const STAGES: Stage[] = [
           '일주일 쉬었다. 돌아오니 조회수가 반토막이었다.',
           '"잠수 탔냐" 는 댓글이 백 개 달렸다.',
           '쉬는 동안에도 조회수를 새로고침했다.',
+        ],
+      },
+      {
+        id: 'shorts2',
+        name: '쇼츠를 본다',
+        hint: '요즘 뭐가 뜨나',
+        d: { mind: 1, body: -1 },
+        reach: 0,
+        lines: [
+          '경쟁 채널 열 개를 훑었다. 이번 주 답은 나와 있었다.',
+          '피드가 한 방향으로 쏠려 있었다. 알고리즘이 뭘 원하는지 보였다.',
         ],
       },
     ],

@@ -18,6 +18,7 @@ import {
   setCadence,
   stageOf,
   start,
+  vibeOf,
   type Card,
 } from '../tube/engine';
 import type { Choice, Dealt, Delta, Run, StatKey } from '../tube/types';
@@ -28,72 +29,83 @@ import { Text } from './Text';
  *
  * 기획은 `docs/design.md`. 지금은 무명 + 실버 구간까지 만들어져 있다.
  *
- * 위 절반은 캐릭터, 아래 절반은 어두운 반투명 판이다. 판 안에 스탯과
- * 카드가 있다. **카드에는 주된 이득 하나가 크게** 박히고 옆에 체력 값이
- * 붙는다 - 고르기 전에 손익이 보여야 고민이 생긴다. 숨은 축(자극·대충)은
- * 안 보여 준다.
+ * **유튜브 채널 페이지를 닮게 짰다.** 위에 배너와 둥근 아바타와 구독자 수,
+ * 그 밑에 분석 막대, 오늘 올릴 영상이 썸네일 카드로 가로로 늘어서고, 아래에
+ * 알림 피드. 소재가 유튜브라 자연스럽고, 다른 키우기 게임의 화면(어두운
+ * 판 + 2×2 카드 + ♥)과 구조가 겹치지 않는다 - 그쪽은 화면 조합을 베끼면
+ * 부정경쟁방지법에 걸릴 수 있다.
+ *
+ * 카드에는 **주된 이득 하나가 크게** 박힌다 - 고르기 전에 손익이 보여야
+ * 고민이 생긴다. 숨은 축(자극·대충)은 안 보여 준다.
  *
  * 화면은 상태를 읽기만 한다. 바꾸는 건 `tube/engine.ts` 뿐이다.
  */
 
 const P = {
-  bg: '#f6efe6',
-  panel: 'rgba(24, 28, 44, 0.86)',
-  card: 'rgba(255,255,255,0.94)',
-  ink: '#1e293b',
-  dim: '#64748b',
-  faint: '#94a3b8',
-  onDark: '#f1f5f9',
-  onDarkDim: '#a7b0c4',
-  blue: '#3b74e8',
-  sub: '#e0364a',
+  bg: '#ffffff',
+  soft: '#f3f4f6',
+  line: '#e5e7eb',
+  ink: '#111827',
+  dim: '#6b7280',
+  faint: '#9ca3af',
+  red: '#ff0033',
   good: '#16a34a',
-  heart: '#ff5c7a',
-  tick: '#4ade80',
+  bad: '#dc2626',
 };
 
-/** 화면에 보이는 스탯 셋. 체력은 따로 막대로 보여 준다 - 카드가 깎아 먹는 자원이라서 */
-const STAT: Record<Exclude<StatKey, 'body'>, { name: string; color: string }> = {
-  plan: { name: '기획', color: '#4f8dff' },
-  edit: { name: '편집', color: '#22c1d6' },
-  mind: { name: '멘탈', color: '#a78bfa' },
+const STAT: Record<StatKey, { name: string; color: string }> = {
+  plan: { name: '기획', color: '#2563eb' },
+  edit: { name: '편집', color: '#0891b2' },
+  mind: { name: '멘탈', color: '#7c3aed' },
+  body: { name: '체력', color: '#f59e0b' },
 };
 
-const STAT_NAME: Record<StatKey, string> = { plan: '기획', edit: '편집', body: '체력', mind: '멘탈' };
+/** 썸네일 색. 행동 종류마다 다르면 카드가 그림 없이도 구분된다 */
+const THUMB: Record<string, string> = {
+  careful: '#1d4ed8',
+  quick: '#6b7280',
+  trend: '#7c3aed',
+  bait: '#dc2626',
+  study: '#0f766e',
+  rest: '#a16207',
+  series: '#1d4ed8',
+  collab: '#db2777',
+  daily: '#6b7280',
+  react: '#dc2626',
+  sponsor: '#15803d',
+  editor: '#0e7490',
+  rest2: '#a16207',
+};
 
 /**
- * 카드에 크게 박을 주된 이득.
+ * 썸네일 위에 크게 박을 주된 이득.
  *
  * 구독자가 붙으면 그게 주인공이다. 안 붙는 카드(공부·휴식)는 제일 많이
  * 오르는 스탯을 앞세운다.
  */
-function headline(r: Run, h: Dealt): { label: string; value: string; color: string } {
-  if (h.gain > 0) return { label: '구독자', value: `+${h.gain.toLocaleString()}`, color: P.sub };
-  const d = h.action.d;
+function headline(r: Run, h: Dealt): { label: string; value: string } {
+  if (h.gain > 0) return { label: '구독자', value: `+${h.gain.toLocaleString()}` };
+  const d: Delta = { ...h.action.d, body: bodyCost(r, h.action) };
   let best: StatKey | null = null;
-  for (const k of ['plan', 'edit', 'mind', 'body'] as StatKey[]) {
-    const v = k === 'body' ? bodyCost(r, h.action) : (d[k] ?? 0);
+  for (const k of Object.keys(STAT) as StatKey[]) {
+    const v = d[k] ?? 0;
     if (v > 0 && (best === null || v > (d[best] ?? 0))) best = k;
   }
-  if (best) {
-    const v = best === 'body' ? bodyCost(r, h.action) : (d[best] ?? 0);
-    const color = best === 'body' ? P.heart : STAT[best as Exclude<StatKey, 'body'>].color;
-    return { label: STAT_NAME[best], value: `+${v}`, color };
-  }
-  if (d.money && d.money > 0) return { label: '수익', value: `+${d.money.toLocaleString()}원`, color: P.good };
-  return { label: '', value: '', color: P.dim };
+  if (best) return { label: STAT[best].name, value: `+${d[best]}` };
+  if (d.money && d.money > 0) return { label: '수익', value: `+${d.money.toLocaleString()}원` };
+  return { label: '', value: '' };
 }
 
-/** 주된 이득 말고 나머지 증감. 작게 붙인다 */
-function rest(r: Run, h: Dealt, skip: string): string[] {
+/** 주된 이득 말고 나머지. 영상 아래 설명 줄에 작게 */
+function meta(r: Run, h: Dealt, skip: string): string {
   const d: Delta = { ...h.action.d, body: bodyCost(r, h.action) };
   const out: string[] = [];
-  (['plan', 'edit', 'mind'] as const).forEach((k) => {
+  (Object.keys(STAT) as StatKey[]).forEach((k) => {
     const v = d[k];
-    if (v && STAT_NAME[k] !== skip) out.push(`${STAT_NAME[k]} ${v > 0 ? '+' : ''}${v}`);
+    if (v && STAT[k].name !== skip) out.push(`${STAT[k].name} ${v > 0 ? '+' : ''}${v}`);
   });
   if (d.money && skip !== '수익') out.push(`${d.money > 0 ? '+' : ''}${d.money.toLocaleString()}원`);
-  return out;
+  return out.join(' · ');
 }
 
 export function TubeScreen() {
@@ -111,11 +123,9 @@ export function TubeScreen() {
   const onChoice = useCallback((c: Choice) => push(answer(run, c)), [run, push]);
   const onReroll = useCallback(() => push(reroll(run)), [run, push]);
   const onCadence = useCallback(() => {
-    // 탭할 때마다 다음 주기로 돈다. 세 개뿐이라 메뉴를 띄울 것까지 없다
     const at = CADENCES.findIndex((c) => c.id === run.cadence);
     push(setCadence(run, CADENCES[(at + 1) % CADENCES.length].id));
   }, [run, push]);
-
   const onRestart = useCallback(() => {
     const got = drawCard(cards);
     const owned = got ? [...cards, got.id] : cards;
@@ -126,158 +136,137 @@ export function TubeScreen() {
 
   const daysLeft = stage.days - run.day + 1;
   const payIn = PAYDAY - ((run.day - 1) % PAYDAY);
-  const last = run.lines[run.lines.length - 1];
-  const ev = run.lines.filter((l) => l.tone === 'ev').slice(-1)[0];
+  const toGoal = Math.min(1, run.subs / stage.goal);
+  const feed = run.lines.slice(-7).reverse();
 
   return (
     <View style={s.root}>
-      {/* ---------------- 위 절반: 캐릭터 */}
-      <View style={[s.scene, { paddingTop: insets.top + 8 }]}>
-        <View style={s.topBar}>
-          <View style={s.pill}>
-            <Text style={s.pillKey}>D</Text>
-            <Text style={s.pillVal}>-{daysLeft}</Text>
-          </View>
-          <View style={s.pill}>
-            <Text style={s.pillVal}>{stage.name}</Text>
-          </View>
-          <View style={{ flex: 1 }} />
-          <View style={[s.pill, s.pillMoney]}>
-            <View style={s.coin} />
-            <Text style={s.pillVal}>{run.money.toLocaleString()}</Text>
-          </View>
-        </View>
-
-        <Pressable style={s.tag} onPress={onCadence}>
-          <Text style={s.tagText}>{concept.name} · {cad.name} ▾</Text>
-        </Pressable>
-
+      {/* ---------------- 채널 헤더 */}
+      <View style={[s.banner, { paddingTop: insets.top }]} />
+      <View style={s.header}>
         {/*
-          캐릭터 자리.
-
-          그림은 사용자가 뽑아 온다. 들어오면 이 칸에 `Image` 를 놓고 아래
-          `charHint` 를 지운다. 배경 투명 PNG, 허리 위, 정면.
+          아바타. 그림은 사용자가 뽑아 온다 - 들어오면 이 원 안에 `Image` 를
+          놓는다. 배경 투명 PNG, 얼굴 위주, 정면.
         */}
-        <View style={s.charBox}>
-          <View style={s.charGhost} />
-          <Text style={s.charHint}>캐릭터 자리</Text>
+        <View style={s.avatar}>
+          <Text style={s.avatarHint}>얼굴</Text>
         </View>
-
-        {/* 마지막 한 줄이 말풍선으로 뜬다. 긴 글은 판 안에서 읽는다 */}
-        {last ? (
-          <View style={s.bubble}>
-            <Text style={s.bubbleText} numberOfLines={2}>
-              {last.text}
-            </Text>
+        <View style={{ flex: 1 }}>
+          <Text style={s.chName}>{concept.name}</Text>
+          <Text style={s.chSubs}>
+            구독자 <Text style={s.chSubsNum}>{run.subs.toLocaleString()}</Text>명
+          </Text>
+          <View style={s.goalBg}>
+            <View style={[s.goalBar, { width: `${toGoal * 100}%` }]} />
           </View>
-        ) : null}
+          <Text style={s.chMeta}>
+            {stage.name} · 다음 {fmtSubs(stage.goal)} · {daysLeft}일 남음
+          </Text>
+        </View>
       </View>
 
-      {/* ---------------- 아래 절반: 어두운 판 */}
-      <View style={[s.panel, { paddingBottom: insets.bottom + 10 }]}>
-        <View style={s.subRow}>
-          <View style={s.subBig}>
-            <Text style={s.subLabel}>구독자</Text>
-            <Text style={s.subVal}>{run.subs.toLocaleString()}</Text>
-          </View>
-          <View style={s.subSide}>
-            <Text style={s.subSideKey}>다음 구간</Text>
-            <Text style={s.subSideVal}>{fmtSubs(stage.goal)}</Text>
-          </View>
-          <View style={s.subSide}>
-            <Text style={s.subSideKey}>정산</Text>
-            <Text style={s.subSideVal}>{payIn}일 뒤</Text>
-          </View>
+      <View style={s.chips}>
+        <Pressable style={s.chip} onPress={onCadence} disabled={!!run.dead}>
+          <Text style={s.chipText}>{cad.name} ▾</Text>
+        </Pressable>
+        <View style={[s.chip, s.chipQuiet]}>
+          <Text style={s.chipQuietText}>잔고 {run.money.toLocaleString()}원</Text>
         </View>
+        <View style={[s.chip, s.chipQuiet]}>
+          <Text style={s.chipQuietText}>정산 {payIn}일 뒤</Text>
+        </View>
+        {/* 이번 주 알고리즘. 쇼츠를 봐서 알아내기 전엔 물음표다 */}
+        <View style={[s.chip, run.trendKnown ? s.chipTrend : s.chipQuiet]}>
+          <Text style={run.trendKnown ? s.chipText : s.chipQuietText}>
+            알고리즘 {run.trendKnown ? vibeOf(run.trend).name : '?'}
+          </Text>
+        </View>
+      </View>
 
-        <View style={s.tiles}>
-          {(Object.keys(STAT) as Exclude<StatKey, 'body'>[]).map((k) => (
-            <View key={k} style={[s.tile, { backgroundColor: STAT[k].color }]}>
-              <Text style={s.tileName}>{STAT[k].name}</Text>
-              <Text style={s.tileVal}>{run.stats[k]}</Text>
+      {/* ---------------- 분석 - 얇은 막대 넷 */}
+      <View style={s.analytics}>
+        {(Object.keys(STAT) as StatKey[]).map((k) => (
+          <View key={k} style={s.stat}>
+            <View style={s.statHead}>
+              <Text style={s.statName}>{STAT[k].name}</Text>
+              <Text style={[s.statVal, { color: STAT[k].color }]}>{run.stats[k]}</Text>
             </View>
+            <View style={s.statBg}>
+              <View style={[s.statBar, { width: `${run.stats[k]}%`, backgroundColor: STAT[k].color }]} />
+            </View>
+          </View>
+        ))}
+      </View>
+
+      {/* ---------------- 오늘 올릴 영상 - 가로 썸네일 */}
+      {run.dead ? (
+        <Ending run={run} reward={reward} onRestart={onRestart} />
+      ) : run.pending ? (
+        <View style={s.ask}>
+          <Text style={s.askText}>{run.pending.text}</Text>
+          {run.pending.choices?.map((c) => (
+            <Pressable key={c.label} style={s.choice} onPress={() => onChoice(c)}>
+              <Text style={s.choiceText}>{c.label}</Text>
+            </Pressable>
           ))}
         </View>
-
-        <View style={s.bars}>
-          <View style={s.barBlock}>
-            <Text style={s.barKey}>남은 틱</Text>
-            <View style={s.ticks}>
-              {Array.from({ length: TICKS }, (_, i) => (
-                <View key={i} style={[s.tickDot, i < run.ticks && s.tickOn]} />
-              ))}
-            </View>
+      ) : (
+        <>
+          <View style={s.rowHead}>
+            <Text style={s.rowTitle}>오늘 올릴 영상</Text>
+            <Text style={s.rowSub}>
+              {run.ticks}/{TICKS}편 남음
+            </Text>
+            <View style={{ flex: 1 }} />
+            <Pressable onPress={onReroll} disabled={run.rerolls <= 0} style={[s.rerollBtn, run.rerolls <= 0 && s.off]}>
+              <Text style={s.rerollText}>아이디어 다시 뽑기 {run.rerolls}</Text>
+            </Pressable>
           </View>
-          <View style={[s.barBlock, { flex: 1.6 }]}>
-            <View style={s.barHead}>
-              <Text style={s.barKey}>체력</Text>
-              <Text style={s.barNum}>{run.stats.body}</Text>
-            </View>
-            <View style={s.hpBg}>
-              <View style={[s.hpFill, { width: `${run.stats.body}%` }]} />
-            </View>
-          </View>
-          <Pressable
-            style={[s.reroll, run.rerolls <= 0 && s.rerollOff]}
-            onPress={onReroll}
-            disabled={run.rerolls <= 0 || !!run.dead || !!run.pending}
-          >
-            <Text style={s.rerollIcon}>↻</Text>
-            <Text style={s.rerollNum}>{run.rerolls}</Text>
-          </Pressable>
-        </View>
-
-        {run.dead ? (
-          <Ending run={run} reward={reward} onRestart={onRestart} />
-        ) : run.pending ? (
-          <View style={s.ask}>
-            <Text style={s.askText}>{run.pending.text}</Text>
-            {run.pending.choices?.map((c) => (
-              <Pressable key={c.label} style={s.choice} onPress={() => onChoice(c)}>
-                <Text style={s.choiceText}>▶ {c.label}</Text>
-              </Pressable>
-            ))}
-          </View>
-        ) : (
-          <View style={s.grid}>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.reel} style={s.reelBox}>
             {run.hand.map((h) => {
               const head = headline(run, h);
-              const hp = bodyCost(run, h.action);
               return (
-                <Pressable key={h.key} style={s.hcard} onPress={() => onPlay(h)}>
-                  <Text style={s.hTitle} numberOfLines={1}>
+                <Pressable key={h.key} style={s.video} onPress={() => onPlay(h)}>
+                  <View style={[s.thumb, { backgroundColor: THUMB[h.action.id] ?? '#374151' }]}>
+                    <Text style={s.thumbHint}>{h.action.hint}</Text>
+                    <View style={s.badge}>
+                      <Text style={s.badgeLabel}>{head.label}</Text>
+                      <Text style={s.badgeVal}>{head.value}</Text>
+                    </View>
+                  </View>
+                  <Text style={s.vTitle} numberOfLines={1}>
                     {h.action.name}
                   </Text>
-                  <Text style={s.hHint} numberOfLines={1}>
-                    {h.action.hint}
+                  <Text style={s.vMeta} numberOfLines={1}>
+                    {meta(run, h, head.label)}
                   </Text>
-                  <View style={s.hMain}>
-                    <View style={[s.hBadge, { backgroundColor: head.color }]}>
-                      <Text style={s.hBadgeText}>{head.label}</Text>
-                    </View>
-                    <Text style={[s.hBig, { color: head.color }]}>{head.value}</Text>
-                  </View>
-                  <View style={s.hFoot}>
-                    <Text style={s.hRest} numberOfLines={1}>
-                      {rest(run, h, head.label).join(' · ')}
-                    </Text>
-                    <Text style={[s.hHp, hp >= 0 && { color: P.good }]}>
-                      ♥ {hp > 0 ? '+' : ''}
-                      {hp}
-                    </Text>
-                  </View>
                 </Pressable>
               );
             })}
-          </View>
-        )}
+          </ScrollView>
+        </>
+      )}
 
-        {ev && !run.dead && !run.pending ? (
-          <Text style={s.evLine} numberOfLines={1}>
-            {ev.text}
-          </Text>
-        ) : null}
+      {/* ---------------- 알림 */}
+      <View style={s.feedHead}>
+        <Text style={s.rowTitle}>알림</Text>
       </View>
+      <ScrollView style={s.feed} contentContainerStyle={{ gap: 8 }} showsVerticalScrollIndicator={false}>
+        {feed.map((ln) => (
+          <View key={ln.id} style={s.noti}>
+            <View
+              style={[
+                s.dot,
+                ln.tone === 'good' && { backgroundColor: P.good },
+                ln.tone === 'bad' && { backgroundColor: P.bad },
+                ln.tone === 'ev' && { backgroundColor: '#2563eb' },
+              ]}
+            />
+            <Text style={[s.notiText, ln.tone === 'sys' && { color: P.faint }]}>{ln.text}</Text>
+          </View>
+        ))}
+      </ScrollView>
+      <View style={{ height: insets.bottom }} />
     </View>
   );
 }
@@ -288,7 +277,7 @@ export function TubeScreen() {
 function Ending({ run, reward, onRestart }: { run: Run; reward: Card | null; onRestart: () => void }) {
   const d = run.dead!;
   return (
-    <ScrollView style={s.end} contentContainerStyle={{ gap: 6 }}>
+    <View style={s.end}>
       <Text style={s.endName}>{d.name}</Text>
       <Text style={s.endLine}>{d.line}</Text>
       <Text style={s.endRow}>
@@ -305,129 +294,83 @@ function Ending({ run, reward, onRestart }: { run: Run; reward: Card | null; onR
         <Text style={s.bigText}>새 채널을 판다</Text>
       </Pressable>
       <Text style={s.endFoot}>카드 {CARDS.length}종 중 {run.cards.length}장</Text>
-    </ScrollView>
+    </View>
   );
 }
 
 const s = StyleSheet.create({
   root: { flex: 1, backgroundColor: P.bg },
 
-  scene: { flex: 1, paddingHorizontal: 12, backgroundColor: '#f3e6d6' },
-  topBar: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  pill: {
-    flexDirection: 'row',
+  banner: { height: 96, backgroundColor: '#0f172a' },
+  header: { flexDirection: 'row', alignItems: 'flex-end', gap: 12, paddingHorizontal: 16, marginTop: -30 },
+  avatar: {
+    width: 76,
+    height: 76,
+    borderRadius: 38,
+    backgroundColor: P.soft,
+    borderWidth: 3,
+    borderColor: P.bg,
     alignItems: 'center',
-    gap: 3,
-    backgroundColor: 'rgba(255,255,255,0.9)',
-    borderRadius: 999,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
+    justifyContent: 'center',
   },
-  pillMoney: { paddingLeft: 7 },
-  pillKey: { color: P.faint, fontSize: 11 },
-  pillVal: { color: P.ink, fontSize: 14 },
-  coin: { width: 14, height: 14, borderRadius: 7, backgroundColor: '#f5bf42', borderWidth: 2, borderColor: '#d9a12a' },
-  tag: {
-    alignSelf: 'flex-start',
-    marginTop: 8,
-    backgroundColor: 'rgba(30,58,138,0.85)',
-    borderRadius: 8,
-    paddingHorizontal: 9,
-    paddingVertical: 4,
-  },
-  tagText: { color: '#ffffff', fontSize: 12 },
+  avatarHint: { color: P.faint, fontSize: 12 },
+  chName: { color: P.ink, fontSize: 19, marginTop: 30 },
+  chSubs: { color: P.dim, fontSize: 13, marginTop: 1 },
+  chSubsNum: { color: P.ink, fontSize: 15 },
+  goalBg: { height: 5, borderRadius: 999, backgroundColor: P.line, overflow: 'hidden', marginTop: 5 },
+  goalBar: { height: 5, borderRadius: 999, backgroundColor: P.red },
+  chMeta: { color: P.faint, fontSize: 11, marginTop: 3 },
 
-  charBox: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', paddingBottom: 6 },
-  charGhost: {
-    width: 190,
-    height: 210,
-    borderRadius: 95,
-    backgroundColor: 'rgba(255,255,255,0.45)',
-    borderWidth: 2,
-    borderColor: 'rgba(255,255,255,0.8)',
-    borderStyle: 'dashed',
-  },
-  charHint: { position: 'absolute', bottom: 100, color: 'rgba(30,41,59,0.45)', fontSize: 13 },
+  chips: { flexDirection: 'row', gap: 6, paddingHorizontal: 16, marginTop: 10 },
+  chip: { backgroundColor: P.ink, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
+  chipQuiet: { backgroundColor: P.soft },
+  chipText: { color: P.bg, fontSize: 12 },
+  chipQuietText: { color: P.ink, fontSize: 12 },
+  chipTrend: { backgroundColor: P.red },
 
-  bubble: {
-    backgroundColor: 'rgba(255,255,255,0.92)',
-    borderRadius: 12,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    marginBottom: 8,
-  },
-  bubbleText: { color: P.ink, fontSize: 13, lineHeight: 19 },
+  analytics: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, marginTop: 12, columnGap: 14, rowGap: 6 },
+  stat: { width: '47%' },
+  statHead: { flexDirection: 'row', justifyContent: 'space-between' },
+  statName: { color: P.dim, fontSize: 11 },
+  statVal: { fontSize: 12 },
+  statBg: { height: 4, borderRadius: 999, backgroundColor: P.line, overflow: 'hidden', marginTop: 2 },
+  statBar: { height: 4, borderRadius: 999 },
 
-  panel: {
-    backgroundColor: P.panel,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    gap: 8,
-  },
+  rowHead: { flexDirection: 'row', alignItems: 'baseline', gap: 8, paddingHorizontal: 16, marginTop: 14 },
+  rowTitle: { color: P.ink, fontSize: 15 },
+  rowSub: { color: P.dim, fontSize: 12 },
+  rerollBtn: { paddingVertical: 2 },
+  off: { opacity: 0.35 },
+  rerollText: { color: '#2563eb', fontSize: 12 },
 
-  subRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  subBig: { flex: 1.5, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 6 },
-  subLabel: { color: P.onDarkDim, fontSize: 11 },
-  subVal: { color: '#ffffff', fontSize: 26, marginTop: -3 },
-  subSide: { flex: 1, backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 12, paddingHorizontal: 10, paddingVertical: 6 },
-  subSideKey: { color: P.onDarkDim, fontSize: 11 },
-  subSideVal: { color: P.onDark, fontSize: 15, marginTop: -1 },
+  reelBox: { flexGrow: 0 },
+  reel: { paddingHorizontal: 16, gap: 10, paddingTop: 8 },
+  video: { width: 168 },
+  thumb: { height: 96, borderRadius: 12, padding: 8, justifyContent: 'space-between' },
+  thumbHint: { color: 'rgba(255,255,255,0.75)', fontSize: 11 },
+  badge: { alignSelf: 'flex-end', backgroundColor: 'rgba(0,0,0,0.6)', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, alignItems: 'flex-end' },
+  badgeLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 9 },
+  badgeVal: { color: '#ffffff', fontSize: 17, marginTop: -2 },
+  vTitle: { color: P.ink, fontSize: 14, marginTop: 6 },
+  vMeta: { color: P.dim, fontSize: 11, marginTop: 1 },
 
-  tiles: { flexDirection: 'row', gap: 6 },
-  tile: { flex: 1, borderRadius: 11, paddingVertical: 7, paddingHorizontal: 10 },
-  tileName: { color: 'rgba(255,255,255,0.85)', fontSize: 11 },
-  tileVal: { color: '#ffffff', fontSize: 22, marginTop: -3 },
+  feedHead: { paddingHorizontal: 16, marginTop: 14, marginBottom: 6 },
+  feed: { flex: 1, paddingHorizontal: 16 },
+  noti: { flexDirection: 'row', alignItems: 'flex-start', gap: 8 },
+  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: P.line, marginTop: 6 },
+  notiText: { color: P.ink, fontSize: 13, lineHeight: 19, flex: 1 },
 
-  bars: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  barBlock: { flex: 1, gap: 4 },
-  barHead: { flexDirection: 'row', justifyContent: 'space-between' },
-  barKey: { color: P.onDarkDim, fontSize: 11 },
-  barNum: { color: P.onDark, fontSize: 12 },
-  ticks: { flexDirection: 'row', gap: 5 },
-  tickDot: { width: 14, height: 14, borderRadius: 7, backgroundColor: 'rgba(255,255,255,0.18)' },
-  tickOn: { backgroundColor: P.tick },
-  hpBg: { height: 10, borderRadius: 999, backgroundColor: 'rgba(255,255,255,0.15)', overflow: 'hidden' },
-  hpFill: { height: 10, borderRadius: 999, backgroundColor: '#2dd4bf' },
-  reroll: { alignItems: 'center', paddingHorizontal: 6 },
-  rerollOff: { opacity: 0.35 },
-  rerollIcon: { color: P.onDark, fontSize: 22, lineHeight: 24 },
-  rerollNum: { color: P.onDarkDim, fontSize: 11, marginTop: -2 },
+  ask: { paddingHorizontal: 16, marginTop: 14, gap: 6 },
+  askText: { color: P.ink, fontSize: 15, lineHeight: 22, paddingBottom: 4 },
+  choice: { backgroundColor: P.soft, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
+  choiceText: { color: P.ink, fontSize: 15 },
 
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  hcard: {
-    width: '48.6%',
-    backgroundColor: P.card,
-    borderRadius: 14,
-    paddingHorizontal: 11,
-    paddingTop: 9,
-    paddingBottom: 8,
-    gap: 3,
-  },
-  hTitle: { color: P.ink, fontSize: 15 },
-  hHint: { color: P.faint, fontSize: 10 },
-  hMain: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 3 },
-  hBadge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
-  hBadgeText: { color: '#ffffff', fontSize: 10 },
-  hBig: { fontSize: 22 },
-  hFoot: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 6 },
-  hRest: { color: P.dim, fontSize: 10, flex: 1 },
-  hHp: { color: P.heart, fontSize: 13 },
-
-  evLine: { color: '#ffe9a8', fontSize: 12, paddingHorizontal: 4 },
-
-  ask: { gap: 6 },
-  askText: { color: P.onDark, fontSize: 15, lineHeight: 22, paddingHorizontal: 4, paddingBottom: 4 },
-  choice: { backgroundColor: 'rgba(255,255,255,0.12)', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12 },
-  choiceText: { color: '#ffffff', fontSize: 15 },
-
-  end: { maxHeight: 300 },
-  endName: { color: '#ffffff', fontSize: 24 },
-  endLine: { color: P.onDarkDim, fontSize: 13 },
-  endRow: { color: P.onDark, fontSize: 12 },
-  endCard: { color: '#86efac', fontSize: 13, marginTop: 4 },
-  big: { backgroundColor: P.blue, borderRadius: 14, paddingVertical: 14, alignItems: 'center', marginTop: 8 },
-  bigText: { color: '#ffffff', fontSize: 17 },
-  endFoot: { color: P.onDarkDim, fontSize: 11, textAlign: 'center' },
+  end: { paddingHorizontal: 16, marginTop: 14, gap: 4 },
+  endName: { color: P.ink, fontSize: 24 },
+  endLine: { color: P.dim, fontSize: 13 },
+  endRow: { color: P.dim, fontSize: 12 },
+  endCard: { color: P.good, fontSize: 13, marginTop: 4 },
+  big: { backgroundColor: P.red, borderRadius: 999, paddingVertical: 12, alignItems: 'center', marginTop: 8 },
+  bigText: { color: '#ffffff', fontSize: 16 },
+  endFoot: { color: P.faint, fontSize: 11, textAlign: 'center' },
 });

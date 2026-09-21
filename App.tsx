@@ -1,5 +1,4 @@
 import { useFonts } from 'expo-font';
-import * as ScreenOrientation from 'expo-screen-orientation';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import React, { useEffect } from 'react';
@@ -24,11 +23,6 @@ void SplashScreen.preventAutoHideAsync();
 
 export default function App() {
   const [fontsLoaded] = useFonts({ [FONT]: require('./assets/BMJUA_otf.otf') });
-
-  useEffect(() => {
-    // 읽는 게임이라 가로로 돌아갈 이유가 없다
-    void ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT_UP);
-  }, []);
 
   useEffect(() => {
     if (fontsLoaded) void SplashScreen.hideAsync();
