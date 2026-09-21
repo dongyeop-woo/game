@@ -204,6 +204,34 @@ export interface Run {
   lastLine: string;
   /** 부계정 카드에서 온 효과 */
   cards: string[];
+  /** 올린 영상 수. 퀘스트가 읽는다 */
+  uploads: number;
+  /** 행동별로 쓴 횟수. 퀘스트가 읽는다 */
+  used: Record<string, number>;
+  /** 정산받은 횟수 */
+  payouts: number;
+  /** 주기를 바꾼 횟수 */
+  cadenceChanges: number;
+  /** 깬 퀘스트. 채널을 새로 파도 남는다 - 배운 걸 또 시키면 짜증난다 */
+  questDone: string[];
+}
+
+/**
+ * 퀘스트 하나.
+ *
+ * 한 번에 하나씩 순서대로 뜬다. 앞의 몇 개는 조작을 가르치고, 그다음은
+ * 구독자 이정표다. `count` 가 판 상태에서 진행을 읽어 온다 - 따로 세지 않는다.
+ */
+export interface Quest {
+  id: string;
+  /** 진행 줄에 뜨는 글. 화면 위치는 <꺾쇠> 로 적는다 */
+  text: string;
+  /** 💡 말풍선에 뜨는 안내 */
+  tip: string;
+  need: number;
+  count: (r: Run) => number;
+  /** 깼을 때 받는 돈 */
+  reward: number;
 }
 
 /** 시작할 때 뽑는 컨셉 */

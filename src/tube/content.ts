@@ -1,4 +1,4 @@
-import type { Concept, Ev, Run, Stage } from './types';
+import type { Concept, Ev, Quest, Run, Stage } from './types';
 
 /**
  * 유튜버 키우기 - 글과 숫자.
@@ -308,6 +308,100 @@ export const STAGES: Stage[] = [
         ],
       },
     ],
+  },
+];
+
+// -------------------------------------------------------------- 퀘스트
+
+/**
+ * 퀘스트 보상. **전부 임시값이다.** 밸런스는 만드는 사람이 정한다.
+ */
+const Q = { small: 100, mid: 300, big: 1000 };
+
+/**
+ * 순서대로 하나씩 뜬다. 앞의 여섯은 조작을 가르친다 - 카드 누르기, 쇼츠
+ * 보기, 다시 뽑기, 주기 바꾸기. 그다음은 구독자 이정표다.
+ */
+export const QUESTS: Quest[] = [
+  {
+    id: 'upload1',
+    text: '<오늘 올릴 영상>에서 영상 1편 올리기',
+    tip: '카드를 누르면 올라갑니다. 하루에 3편까지.',
+    need: 1,
+    count: (r) => r.uploads,
+    reward: Q.small,
+  },
+  {
+    id: 'shorts1',
+    text: '<쇼츠를 본다>로 이번 주 알고리즘 알아내기',
+    tip: '알고리즘은 매주 바뀝니다. 맞는 영상은 유입이 뜁니다.',
+    need: 1,
+    count: (r) => (r.used.shorts ?? 0) + (r.used.shorts2 ?? 0),
+    reward: Q.small,
+  },
+  {
+    id: 'reroll1',
+    text: '<아이디어 다시 뽑기> 한 번 써 보기',
+    tip: '마음에 안 드는 패는 버려도 됩니다. 채널당 8번.',
+    need: 1,
+    count: (r) => 8 - r.rerolls,
+    reward: Q.small,
+  },
+  {
+    id: 'subs100',
+    text: '구독자 100명',
+    tip: '첫 100명이 제일 오래 걸립니다.',
+    need: 100,
+    count: (r) => r.subs,
+    reward: Q.mid,
+  },
+  {
+    id: 'payout1',
+    text: '첫 정산 받기',
+    tip: '닷새마다 애드센스가 들어옵니다. 기대는 하지 마세요.',
+    need: 1,
+    count: (r) => r.payouts,
+    reward: Q.small,
+  },
+  {
+    id: 'cadence1',
+    text: '<주 3편 ▾>을 눌러 업로드 주기 바꿔 보기',
+    tip: '물량이냐 완성도냐. 매주 다시 고민하는 겁니다.',
+    need: 1,
+    count: (r) => r.cadenceChanges,
+    reward: Q.small,
+  },
+  {
+    id: 'subs1k',
+    text: '구독자 1,000명 - 실버 구간 진입',
+    tip: '천 명이 넘으면 협찬 메일이 오기 시작합니다.',
+    need: 1000,
+    count: (r) => r.subs,
+    reward: Q.mid,
+  },
+  {
+    id: 'sponsor1',
+    text: '첫 협찬 받기',
+    tip: '유료 광고는 표시해야 합니다. 안 하면 나중에 값을 치릅니다.',
+    need: 1,
+    count: (r) => r.used.sponsor ?? 0,
+    reward: Q.mid,
+  },
+  {
+    id: 'subs10k',
+    text: '구독자 1만명',
+    tip: '여기서부터 알고리즘이 사람을 골라 밀어줍니다.',
+    need: 10000,
+    count: (r) => r.subs,
+    reward: Q.big,
+  },
+  {
+    id: 'subs100k',
+    text: '구독자 10만명 - 실버 버튼',
+    tip: '실버 버튼은 신청해야 옵니다. 저절로 안 옵니다.',
+    need: 100000,
+    count: (r) => r.subs,
+    reward: Q.big,
   },
 ];
 

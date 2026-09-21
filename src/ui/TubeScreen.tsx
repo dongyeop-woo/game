@@ -14,6 +14,7 @@ import {
   drawCard,
   fmtSubs,
   play,
+  questOf,
   reroll,
   setCadence,
   stageOf,
@@ -108,10 +109,13 @@ function meta(r: Run, h: Dealt, skip: string): string {
   return out.join(' · ');
 }
 
+/** 지금 퀘스트가 몇 번째인가. 진행 줄 앞에 붙는 숫자다 */
+const QUESTS_INDEX = (r: Run) => r.questDone.length;
+
 export function TubeScreen() {
   const insets = useSafeAreaInsets();
   const [cards, setCards] = useState<string[]>([]);
-  const [run, setRun] = useState<Run>(() => start([]));
+  const [run, setRun] = useState<Run>(() => start([], []));
   const [reward, setReward] = useState<Card | null>(null);
 
   const stage = stageOf(run);
@@ -131,8 +135,11 @@ export function TubeScreen() {
     const owned = got ? [...cards, got.id] : cards;
     setCards(owned);
     setReward(got);
-    setRun(start(owned));
-  }, [cards]);
+    // 깬 퀘스트는 들고 간다. 배운 걸 또 시키면 짜증난다
+    setRun(start(owned, run.questDone));
+  }, [cards, run.questDone]);
+
+  const quest = questOf(run);
 
   const daysLeft = stage.days - run.day + 1;
   const payIn = PAYDAY - ((run.day - 1) % PAYDAY);
@@ -182,6 +189,25 @@ export function TubeScreen() {
           </Text>
         </View>
       </View>
+
+      {/* ---------------- 퀘스트 - 안내 말풍선 + 진행 줄 */}
+      {quest && !run.dead ? (
+        <View style={s.questBox}>
+          <View style={s.tip}>
+            <Text style={s.tipIcon}>💡</Text>
+            <Text style={s.tipText}>{quest.tip}</Text>
+          </View>
+          <View style={s.questRow}>
+            <Text style={s.questNum}>{QUESTS_INDEX(run) + 1}.</Text>
+            <Text style={s.questText} numberOfLines={1}>
+              {quest.text}
+            </Text>
+            <Text style={s.questCount}>
+              ({Math.min(quest.count(run), quest.need).toLocaleString()}/{quest.need.toLocaleString()})
+            </Text>
+          </View>
+        </View>
+      ) : null}
 
       {/* ---------------- 분석 - 얇은 막대 넷 */}
       <View style={s.analytics}>
@@ -327,6 +353,33 @@ const s = StyleSheet.create({
   chipText: { color: P.bg, fontSize: 12 },
   chipQuietText: { color: P.ink, fontSize: 12 },
   chipTrend: { backgroundColor: P.red },
+
+  questBox: { marginHorizontal: 16, marginTop: 12, gap: 6 },
+  tip: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    backgroundColor: '#fffbe6',
+    borderWidth: 1,
+    borderColor: '#f5e6a3',
+    borderRadius: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  tipIcon: { fontSize: 15 },
+  tipText: { color: '#5b4a0a', fontSize: 13, lineHeight: 19, flex: 1 },
+  questRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: P.ink,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  questNum: { color: P.faint, fontSize: 12 },
+  questText: { color: P.bg, fontSize: 13, flex: 1 },
+  questCount: { color: '#fbbf24', fontSize: 12 },
 
   analytics: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 16, marginTop: 12, columnGap: 14, rowGap: 6 },
   stat: { width: '47%' },

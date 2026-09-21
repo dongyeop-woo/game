@@ -1,5 +1,5 @@
-import { CONCEPTS, EVENTS, STAGES, VIBES } from './content';
-import type { Action, Choice, Concept, Dealt, Death, Delta, Ev, Line, Run, Stage } from './types';
+import { CONCEPTS, EVENTS, QUESTS, STAGES, VIBES } from './content';
+import type { Action, Choice, Concept, Dealt, Death, Delta, Ev, Line, Quest, Run, Stage } from './types';
 
 /**
  * 유튜버 키우기 - 굴러가는 부분.
@@ -86,6 +86,29 @@ export const CADENCES: Cadence[] = [
 export const cadenceOf = (r: Run) => CADENCES.find((c) => c.id === r.cadence) ?? CADENCES[1];
 
 export const vibeOf = (id: string) => VIBES.find((v) => v.id === id) ?? VIBES[0];
+
+// ------------------------------------------------------------------ 퀘스트
+
+/** 지금 뜬 퀘스트. 안 깬 것 중 첫 번째다 */
+export function questOf(r: Run): Quest | null {
+  return QUESTS.find((q) => !r.questDone.includes(q.id)) ?? null;
+}
+
+/**
+ * 퀘스트를 깼는지 본다. 상태가 바뀔 때마다 부른다.
+ *
+ * 한 번에 여러 개가 깨질 수 있다 - 구독자 이정표는 한 영상에 둘을 넘기도
+ * 한다. 그래서 돌면서 본다.
+ */
+function checkQuests(r: Run) {
+  for (;;) {
+    const q = questOf(r);
+    if (!q || q.count(r) < q.need) return;
+    r.questDone.push(q.id);
+    r.money += q.reward;
+    say(r, `퀘스트 완료 - ${q.text.replace(/<|>/g, '')} (+${q.reward.toLocaleString()}원)`, 'good');
+  }
+}
 
 /** 이번 주 알고리즘을 새로 뽑는다. 지난주 것과는 다르게 */
 function rollTrend(r: Run) {
@@ -178,12 +201,13 @@ export function reroll(r: Run): Run {
   r.rerolls -= 1;
   r.hand = [];
   fill(r);
+  checkQuests(r);
   return r;
 }
 
 // ------------------------------------------------------------------ 시작
 
-export function start(cards: string[] = []): Run {
+export function start(cards: string[] = [], questDone: string[] = []): Run {
   const lucky = cards.includes('luckystart');
   const concept = pick(CONCEPTS, (c) => c.weight * (lucky && c.rank >= 4 ? 3 : 1));
 
@@ -214,6 +238,11 @@ export function start(cards: string[] = []): Run {
     seen: [],
     lastLine: '',
     cards,
+    uploads: 0,
+    used: {},
+    payouts: 0,
+    cadenceChanges: 0,
+    questDone: [...questDone],
   };
   apply(r, concept.d);
   if (cards.includes('gear')) r.stats.edit = clamp(r.stats.edit + 12);
@@ -293,6 +322,8 @@ export function play(r: Run, card: Dealt): Run {
 
   const a = card.action;
   apply(r, { ...a.d, body: bodyCost(r, a) });
+  r.used[a.id] = (r.used[a.id] ?? 0) + 1;
+  if (a.reach) r.uploads += 1;
 
   let line = one(a.lines);
   if (line === r.lastLine && a.lines.length > 1) line = one(a.lines.filter((t) => t !== line));
@@ -314,7 +345,8 @@ export function play(r: Run, card: Dealt): Run {
   fill(r);
 
   r.ticks -= 1;
-  if (r.ticks <= 0) return endDay(r);
+  if (r.ticks <= 0) endDay(r);
+  checkQuests(r);
   return r;
 }
 
@@ -348,6 +380,7 @@ function endDay(r: Run): Run {
   if ((r.day - 1) % PAYDAY === 0 && r.subs > 0) {
     const got = payout(r);
     r.money += got;
+    r.payouts += 1;
     say(r, `애드센스 정산 ${got.toLocaleString()}원${r.yellow > 0 ? ' (노란 딱지 반영)' : ''}`, 'good');
   }
 
@@ -409,6 +442,7 @@ export function answer(r: Run, choice: Choice): Run {
   }
   const dead = checkDead(r);
   if (dead) r.dead = dead;
+  checkQuests(r);
   return r;
 }
 
@@ -416,10 +450,12 @@ export function answer(r: Run, choice: Choice): Run {
 export function setCadence(r: Run, id: string): Run {
   if (r.dead || r.cadence === id) return r;
   r.cadence = id;
+  r.cadenceChanges += 1;
   const c = cadenceOf(r);
   say(r, `업로드 주기를 ${c.name}${josa(c.name, '으로', '로')} 바꿨다.`, 'sys');
   // 손에 든 카드의 이득은 주기로 계산한 것이라 다시 뽑는다
   r.hand = r.hand.map((h) => ({ ...h, gain: reachOf(r, h.action) }));
+  checkQuests(r);
   return r;
 }
 
