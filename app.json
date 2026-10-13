@@ -23,7 +23,9 @@
     "plugins": [
       "expo-font",
       "expo-splash-screen",
-      "expo-asset"
+      "expo-asset",
+      "expo-audio",
+      "expo-sharing"
     ]
   }
 }
